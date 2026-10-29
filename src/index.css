@@ -1,0 +1,375 @@
+:root {
+  --bg-canvas: #F5F4F0;
+  --bg-surface: #FFFFFF;
+  --bg-surface-alt: #ECEAE4;
+  --bg-inverse: #121316;
+  
+  --text-primary: #121316;
+  --text-secondary: #585D6B;
+  --text-muted: #8E94A0;
+  --text-inverse: #F5F4F0;
+
+  --border-strong: #121316;
+  --border-medium: #D0CCC2;
+  --border-subtle: #E6E2D8;
+
+  --accent-vermilion: #FF3B20;
+  --accent-vermilion-soft: #FFEBE8;
+  --accent-cobalt: #1E40AF;
+  --accent-cobalt-soft: #EFF4FF;
+  --accent-emerald: #059669;
+  --accent-emerald-soft: #ECFDF5;
+  --accent-amber: #D97706;
+  --accent-amber-soft: #FFFBEB;
+
+  --shadow-crisp-sm: 2px 2px 0px #121316;
+  --shadow-crisp: 4px 4px 0px #121316;
+  --shadow-crisp-lg: 7px 7px 0px #121316;
+  --shadow-crisp-hover: 6px 6px 0px #121316;
+
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* Typography Headings */
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Ticker Marquee */
+.ticker-wrap {
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--bg-inverse);
+  color: var(--text-inverse);
+  border-bottom: 2px solid var(--border-strong);
+  padding: 8px 0;
+  white-space: nowrap;
+}
+
+.ticker-content {
+  display: inline-block;
+  animation: tickerScroll 24s linear infinite;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+@keyframes tickerScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Base Buttons with Crisp Neo-Brutalist Feel */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 24px;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-crisp);
+  text-decoration: none;
+  user-select: none;
+}
+
+.btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-crisp-hover);
+}
+
+.btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-crisp-sm);
+}
+
+.btn-primary {
+  background-color: var(--accent-vermilion);
+  color: #FFFFFF;
+}
+
+.btn-primary:hover {
+  background-color: #E22B12;
+}
+
+.btn-inverse {
+  background-color: var(--bg-inverse);
+  color: var(--text-inverse);
+}
+
+.btn-inverse:hover {
+  background-color: #23252A;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  box-shadow: var(--shadow-crisp-sm);
+}
+
+.btn-sm:hover {
+  box-shadow: 3px 3px 0px #121316;
+}
+
+.btn-outline {
+  background-color: transparent;
+}
+
+/* Badges & Tags */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--bg-surface);
+}
+
+.badge-valido, .badge-completada {
+  background-color: var(--accent-emerald-soft);
+  color: var(--accent-emerald);
+  border-color: var(--accent-emerald);
+}
+
+.badge-pendiente, .badge-procesando {
+  background-color: var(--accent-amber-soft);
+  color: var(--accent-amber);
+  border-color: var(--accent-amber);
+}
+
+.badge-usado, .badge-anulado, .badge-cancelada, .badge-fallida {
+  background-color: var(--bg-surface-alt);
+  color: var(--text-secondary);
+  border-color: var(--border-medium);
+}
+
+.badge-categoria {
+  background-color: var(--accent-cobalt-soft);
+  color: var(--accent-cobalt);
+  border-color: var(--accent-cobalt);
+}
+
+/* Cards & Layout Containers */
+.card-brutal {
+  background-color: var(--bg-surface);
+  border: 2px solid var(--border-strong);
+  box-shadow: var(--shadow-crisp);
+  border-radius: var(--radius-xs);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.card-brutal:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: var(--shadow-crisp-lg);
+}
+
+/* Monogram Poster Art Stamped Element (Like user's RSVP reference) */
+.poster-monogram {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(4rem, 10vw, 8rem);
+  line-height: 0.85;
+  letter-spacing: -0.06em;
+  user-select: none;
+  pointer-events: none;
+  opacity: 0.88;
+}
+
+/* Concert Physical Ticket styling */
+.ticket-wrapper {
+  background: #FFF;
+  border: 2px solid var(--border-strong);
+  box-shadow: var(--shadow-crisp-lg);
+  border-radius: var(--radius-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.ticket-divider {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ticket-notch-left, .ticket-notch-right {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  background-color: var(--bg-canvas);
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.ticket-notch-left {
+  left: -14px;
+}
+
+.ticket-notch-right {
+  right: -14px;
+}
+
+.ticket-perforation {
+  width: 100%;
+  border-bottom: 2px dashed var(--border-medium);
+}
+
+/* Grid & Utilities */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.grid-events {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 32px;
+}
+
+@media (max-width: 768px) {
+  .grid-events {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+/* Modal and Drawer Transitions */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(18, 19, 22, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  padding: 20px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal-content {
+  background-color: var(--bg-surface);
+  border: 2px solid var(--border-strong);
+  box-shadow: 10px 10px 0px #121316;
+  border-radius: var(--radius-xs);
+  max-width: 650px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-aside {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  max-width: 95vw;
+  background-color: var(--bg-surface);
+  border-left: 2px solid var(--border-strong);
+  box-shadow: -8px 0px 0px rgba(18, 19, 22, 0.2);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* Form Controls with Brutalist styling */
+.input-brutal {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background-color: #FFF;
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.input-brutal:focus {
+  border-color: var(--accent-cobalt);
+  box-shadow: 3px 3px 0px var(--accent-cobalt);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-surface-alt);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 0;
+}
