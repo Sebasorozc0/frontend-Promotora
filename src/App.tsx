@@ -659,7 +659,7 @@ function AppContent() {
         }
       }).catch(() => {});
     } else {
-      setMisBoletos(MOCK_BOLETOS);
+      setMisBoletos([]);
       setMisCompras([]);
     }
   }, [user]);

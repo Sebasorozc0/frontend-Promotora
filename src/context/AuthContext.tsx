@@ -28,25 +28,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Restaurar sesión de localStorage si existe
+    // Restaurar sesión de localStorage únicamente si existe un token y usuario válido
     const token = api.getAccessToken();
     const storedUser = localStorage.getItem('promotora_user');
     if (token && storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser);
+        if (parsed && parsed.email) {
+          setUser(parsed);
+        } else {
+          setUser(null);
+        }
       } catch {
-        // Fallback
+        setUser(null);
       }
     } else {
-      // Sesión de demostración inicial por defecto (CLIENTE)
-      const demoUser: UsuarioSesion = {
-        id: 7,
-        nombre: 'Carlos Mendoza',
-        email: 'carlos.mendoza@ejemplo.com',
-        rol: 'CLIENTE',
-        debeCambiarPassword: false,
-      };
-      setUser(demoUser);
+      setUser(null);
     }
     setIsLoading(false);
   }, []);

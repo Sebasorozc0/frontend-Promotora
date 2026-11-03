@@ -28,7 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenProfile,
 }) => {
-  const { user, isAuthenticated, logout, setSimulatedRole } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -172,40 +172,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             }} />
           </button>
 
-          {/* Selector de Rol para pruebas de integración */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            backgroundColor: 'var(--bg-surface-alt)',
-            border: '1.5px solid var(--border-strong)',
-            padding: '2px 6px',
-            borderRadius: 'var(--radius-xs)'
-          }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', marginRight: '6px', color: 'var(--text-secondary)' }}>
-              ROL:
-            </span>
-            <select
-              value={user?.rol || 'CLIENTE'}
-              onChange={(e) => setSimulatedRole(e.target.value as RolUsuario)}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                outline: 'none',
-                color: 'var(--text-primary)'
-              }}
-            >
-              <option value="CLIENTE">CLIENTE</option>
-              <option value="DUENO_RECINTO">DUEÑO RECINTO</option>
-              <option value="ADMINISTRADOR">ADMINISTRADOR</option>
-            </select>
-          </div>
-
           {/* Auth Button / User Profile */}
-          {isAuthenticated ? (
+          {isAuthenticated && user ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 onClick={onOpenProfile}
@@ -222,7 +190,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
               >
                 <User size={14} />
-                {user?.nombre.split(' ')[0]}
+                <span>{user.nombre?.trim() || user.email?.split('@')[0] || 'Mi Perfil'}</span>
               </button>
               <button
                 onClick={logout}
@@ -236,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <button onClick={onOpenAuth} className="btn btn-sm btn-inverse">
               <User size={16} />
-              Ingresar
+              Iniciar Sesión
             </button>
           )}
         </div>
