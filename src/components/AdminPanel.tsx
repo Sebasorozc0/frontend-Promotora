@@ -6,6 +6,7 @@ import { VenueMapEditor } from './VenueMapEditor';
 import { AdminCatalog } from './admin/AdminCatalog';
 import { AdminEvents } from './admin/AdminEvents';
 import { AdminFinance } from './admin/AdminFinance';
+import { AdminReviews } from './admin/AdminReviews';
 
 export const AdminPanel: React.FC = () => {
   const [resenas, setResenas] = useState<ResenaPublica[]>([
@@ -147,69 +148,7 @@ export const AdminPanel: React.FC = () => {
       {tabAdmin === 'RECINTOS' && <VenueMapEditor />}
 
       {/* Tab: Moderación de Reseñas */}
-      {tabAdmin === 'MODERACION' && (
-        <div>
-          <div style={{ marginBottom: '20px', color: 'var(--text-secondary)' }}>
-            Regla de Negocio #9: Solo clientes con boleto <strong>USADO</strong> pueden opinar. Las reseñas nacen PENDIENTE y las modera un administrador antes de mostrarse en el catálogo.
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {resenas.map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  backgroundColor: '#FFF',
-                  border: '2px solid var(--border-strong)',
-                  boxShadow: 'var(--shadow-crisp-sm)',
-                  padding: '20px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <span className="badge badge-categoria">{r.eventoTitulo}</span>
-                    <span className="badge badge-pendiente">{r.estado}</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-amber)' }}>
-                      ★ {r.calificacion}.0 / 5.0
-                    </span>
-                  </div>
-                  <h4 style={{ fontSize: '1.05rem', marginBottom: '4px' }}>
-                    Cliente: {r.clienteNombre}
-                  </h4>
-                  <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)' }}>
-                    "{r.comentario}"
-                  </p>
-                </div>
-
-                {r.estado === 'PENDIENTE' ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => handleModerar(r.id, 'APROBADA')}
-                      className="btn btn-sm btn-primary"
-                      style={{ backgroundColor: 'var(--accent-emerald)', borderColor: 'var(--border-strong)' }}
-                    >
-                      <Check size={16} /> Aprobar
-                    </button>
-                    <button
-                      onClick={() => handleModerar(r.id, 'RECHAZADA')}
-                      className="btn btn-sm btn-outline"
-                      style={{ color: 'var(--accent-vermilion)' }}
-                    >
-                      <X size={16} /> Rechazar
-                    </button>
-                  </div>
-                ) : (
-                  <span className={`badge ${r.estado === 'APROBADA' ? 'badge-valido' : 'badge-anulado'}`}>
-                    {r.estado}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {tabAdmin === 'MODERACION' && <AdminReviews />}
 
       {/* Tab: Documentos RAG */}
       {tabAdmin === 'RAG' && (

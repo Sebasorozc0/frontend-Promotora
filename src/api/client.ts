@@ -353,9 +353,7 @@ class ApiClient {
     });
   }
 
-  public async getMisResenas(): Promise<ResenaPublica[]> {
-    return this.request<ResenaPublica[]>('/resenas/mis');
-  }
+
 
   // --- IA José ---
   public async consultarIa(consulta: string, sessionId?: string): Promise<ConsultaIaResponse> {
@@ -611,15 +609,26 @@ class ApiClient {
     });
   }
 
-  public async editarResena(id: number, data: { calificacion: number; comentario: string }): Promise<void> {
+  public async getMisResenas(page: number = 1, pageSize: number = 20): Promise<PaginatedResult<ResenaPublica>> {
+    return this.request<PaginatedResult<ResenaPublica>>(`/resenas/mis?page=${page}&pageSize=${pageSize}`);
+  }
+
+  public async editarResena(id: number, data: { calificacion: number; comentario: string; estadoEsperado?: string }): Promise<void> {
     await this.request(`/resenas/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        calificacion: data.calificacion,
+        comentario: data.comentario,
+        estadoEsperado: data.estadoEsperado || 'PENDIENTE',
+      }),
     });
   }
 
-  public async retirarResena(id: number): Promise<void> {
-    await this.request(`/resenas/${id}/retirar`, { method: 'POST' });
+  public async retirarResena(id: number, estadoEsperado: string = 'APROBADA'): Promise<void> {
+    await this.request(`/resenas/${id}/retirar`, {
+      method: 'POST',
+      body: JSON.stringify({ estadoEsperado }),
+    });
   }
 
   // --- IA y Documentos RAG (6 endpoints) ---
