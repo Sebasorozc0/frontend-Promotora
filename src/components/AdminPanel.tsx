@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { MOCK_RESENAS, MOCK_EVENTOS } from '../api/client';
 import { ResenaPublica } from '../types/api';
-import { ShieldCheck, Check, X, FileText, Upload, RefreshCw, MapPin } from 'lucide-react';
+import { ShieldCheck, Check, X, FileText, Upload, RefreshCw, MapPin, Tag, Calendar, DollarSign, MessageSquare, Brain, Grid, Users } from 'lucide-react';
 import { VenueMapEditor } from './VenueMapEditor';
+import { AdminCatalog } from './admin/AdminCatalog';
 
 export const AdminPanel: React.FC = () => {
   const [resenas, setResenas] = useState<ResenaPublica[]>([
@@ -34,7 +35,9 @@ export const AdminPanel: React.FC = () => {
     { id: 3, nombre: 'Politicas_Reembolso_ASA.pdf', version: 1, estado: 'PENDIENTE', chunks: 0, fecha: '2026-10-21' },
   ]);
 
-  const [tabAdmin, setTabAdmin] = useState<'RECINTOS' | 'MODERACION' | 'RAG' | 'EVENTOS'>('RECINTOS');
+  const [tabAdmin, setTabAdmin] = useState<
+    'CATALOGO' | 'RECINTOS' | 'MODERACION' | 'RAG' | 'EVENTOS' | 'FINANZAS' | 'DISTRIBUCION' | 'USUARIOS'
+  >('CATALOGO');
 
   const handleModerar = (id: number, decision: 'APROBADA' | 'RECHAZADA') => {
     setResenas((prev) =>
@@ -56,7 +59,9 @@ export const AdminPanel: React.FC = () => {
         justifyContent: 'space-between',
         borderBottom: '2px solid var(--border-strong)',
         paddingBottom: '20px',
-        marginBottom: '32px'
+        marginBottom: '32px',
+        flexWrap: 'wrap',
+        gap: '16px'
       }}>
         <div>
           <span className="badge badge-categoria" style={{ marginBottom: '6px' }}>
@@ -67,33 +72,74 @@ export const AdminPanel: React.FC = () => {
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
+            onClick={() => setTabAdmin('CATALOGO')}
+            className={`btn btn-sm ${tabAdmin === 'CATALOGO' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
+          >
+            <Tag size={14} />
+            Categorías & Artistas
+          </button>
+          <button
+            onClick={() => setTabAdmin('EVENTOS')}
+            className={`btn btn-sm ${tabAdmin === 'EVENTOS' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
+          >
+            <Calendar size={14} />
+            Eventos & Entradas
+          </button>
+          <button
             onClick={() => setTabAdmin('RECINTOS')}
             className={`btn btn-sm ${tabAdmin === 'RECINTOS' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
             <MapPin size={14} />
-            Recintos y Mapas de Localidades
+            Recintos & Planos
+          </button>
+          <button
+            onClick={() => setTabAdmin('DISTRIBUCION')}
+            className={`btn btn-sm ${tabAdmin === 'DISTRIBUCION' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
+          >
+            <Grid size={14} />
+            Silletería Numerada
+          </button>
+          <button
+            onClick={() => setTabAdmin('FINANZAS')}
+            className={`btn btn-sm ${tabAdmin === 'FINANZAS' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
+          >
+            <DollarSign size={14} />
+            Cuentas & Liquidación
           </button>
           <button
             onClick={() => setTabAdmin('MODERACION')}
             className={`btn btn-sm ${tabAdmin === 'MODERACION' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
           >
-            Moderación de Reseñas ({resenas.filter((r) => r.estado === 'PENDIENTE').length})
+            <MessageSquare size={14} />
+            Moderación ({resenas.filter((r) => r.estado === 'PENDIENTE').length})
           </button>
           <button
             onClick={() => setTabAdmin('RAG')}
             className={`btn btn-sm ${tabAdmin === 'RAG' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
           >
+            <Brain size={14} />
             Documentos RAG José
           </button>
           <button
-            onClick={() => setTabAdmin('EVENTOS')}
-            className={`btn btn-sm ${tabAdmin === 'EVENTOS' ? 'btn-inverse' : 'btn-outline'}`}
+            onClick={() => setTabAdmin('USUARIOS')}
+            className={`btn btn-sm ${tabAdmin === 'USUARIOS' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
           >
-            Eventos Activos
+            <Users size={14} />
+            Usuarios & Roles
           </button>
         </div>
       </div>
+
+      {/* Tab: Categorías y Presentadores */}
+      {tabAdmin === 'CATALOGO' && <AdminCatalog />}
 
       {/* Tab: Recintos y Mapas de Localidades */}
       {tabAdmin === 'RECINTOS' && <VenueMapEditor />}
@@ -259,6 +305,33 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Tab: Finanzas Placeholder */}
+      {tabAdmin === 'FINANZAS' && (
+        <div style={{ padding: '30px', textAlign: 'center', backgroundColor: '#FFF', border: '2px solid var(--border-strong)' }}>
+          <DollarSign size={40} color="var(--accent-emerald)" style={{ marginBottom: '10px' }} />
+          <h3>Módulo de Finanzas & Liquidación</h3>
+          <p style={{ color: 'var(--text-secondary)' }}>Seleccione las pestañas superiores para operar el sistema contable.</p>
+        </div>
+      )}
+
+      {/* Tab: Distribución Placeholder */}
+      {tabAdmin === 'DISTRIBUCION' && (
+        <div style={{ padding: '30px', textAlign: 'center', backgroundColor: '#FFF', border: '2px solid var(--border-strong)' }}>
+          <Grid size={40} color="var(--accent-cobalt)" style={{ marginBottom: '10px' }} />
+          <h3>Módulo de Silletería y Mesas Numeradas</h3>
+          <p style={{ color: 'var(--text-secondary)' }}>Gestione el layout de mesas y sillas por localidad.</p>
+        </div>
+      )}
+
+      {/* Tab: Usuarios Placeholder */}
+      {tabAdmin === 'USUARIOS' && (
+        <div style={{ padding: '30px', textAlign: 'center', backgroundColor: '#FFF', border: '2px solid var(--border-strong)' }}>
+          <Users size={40} color="var(--accent-amber)" style={{ marginBottom: '10px' }} />
+          <h3>Módulo de Usuarios & Credenciales ASA</h3>
+          <p style={{ color: 'var(--text-secondary)' }}>Administre altas de administradores y dueños de recinto.</p>
         </div>
       )}
 
