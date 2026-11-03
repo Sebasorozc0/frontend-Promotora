@@ -685,17 +685,19 @@ class ApiClient {
     return this.request<SillaDto[]>(`/eventos/${eventoId}/localidades/${localidadId}/asientos`);
   }
 
-  public async bloquearAsiento(eventoId: number, localidadId: number, asientoId: number): Promise<void> {
+  public async bloquearAsiento(eventoId: number, localidadId: number, asientoIds: number[] | number): Promise<void> {
+    const ids = Array.isArray(asientoIds) ? asientoIds : [asientoIds];
     await this.request(`/eventos/${eventoId}/localidades/${localidadId}/asientos/bloquear`, {
       method: 'POST',
-      body: JSON.stringify({ asientoId }),
+      body: JSON.stringify(ids),
     });
   }
 
-  public async desbloquearAsiento(eventoId: number, localidadId: number, asientoId: number): Promise<void> {
+  public async desbloquearAsiento(eventoId: number, localidadId: number, asientoIds: number[] | number): Promise<void> {
+    const ids = Array.isArray(asientoIds) ? asientoIds : [asientoIds];
     await this.request(`/eventos/${eventoId}/localidades/${localidadId}/asientos/desbloquear`, {
       method: 'POST',
-      body: JSON.stringify({ asientoId }),
+      body: JSON.stringify(ids),
     });
   }
 
