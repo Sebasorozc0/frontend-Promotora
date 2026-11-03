@@ -7,6 +7,7 @@ import { AdminCatalog } from './admin/AdminCatalog';
 import { AdminEvents } from './admin/AdminEvents';
 import { AdminFinance } from './admin/AdminFinance';
 import { AdminReviews } from './admin/AdminReviews';
+import { AdminRag } from './admin/AdminRag';
 
 export const AdminPanel: React.FC = () => {
   const [resenas, setResenas] = useState<ResenaPublica[]>([
@@ -151,71 +152,7 @@ export const AdminPanel: React.FC = () => {
       {tabAdmin === 'MODERACION' && <AdminReviews />}
 
       {/* Tab: Documentos RAG */}
-      {tabAdmin === 'RAG' && (
-        <div>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '20px'
-          }}>
-            <div>
-              <p style={{ color: 'var(--text-secondary)' }}>
-                Regla F9: Carga pública para RAG. La indexación es explícita por POST /ia/documentos/{'{id}'}/reindexar (aprobada por administrador).
-              </p>
-            </div>
-            <button className="btn btn-sm btn-primary">
-              <Upload size={16} /> Cargar Nuevo Documento
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {documentos.map((d) => (
-              <div
-                key={d.id}
-                style={{
-                  backgroundColor: '#FFF',
-                  border: '2px solid var(--border-strong)',
-                  boxShadow: 'var(--shadow-crisp-sm)',
-                  padding: '16px 20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <FileText size={28} color="var(--accent-cobalt)" />
-                  <div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.05rem' }}>
-                      {d.nombre}
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      Versión: v{d.version} · Fecha: {d.fecha} · Chunks vectorizados: {d.chunks}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span className={`badge ${d.estado === 'INDEXADO' ? 'badge-valido' : 'badge-pendiente'}`}>
-                    {d.estado}
-                  </span>
-                  {d.estado === 'PENDIENTE' && (
-                    <button
-                      onClick={() => handleReindexar(d.id)}
-                      className="btn btn-sm btn-inverse"
-                    >
-                      <RefreshCw size={14} /> Indexar Vectores
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tab: Eventos Activos */}
-      {tabAdmin === 'EVENTOS' && <AdminEvents />}
+      {tabAdmin === 'RAG' && <AdminRag />}
 
       {/* Tab: Finanzas Placeholder */}
       {tabAdmin === 'FINANZAS' && <AdminFinance />}

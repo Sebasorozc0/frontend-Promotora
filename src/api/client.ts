@@ -640,14 +640,16 @@ class ApiClient {
     return this.request<DocumentoRagDto>(`/ia/documentos/${id}`);
   }
 
-  public async subirDocumentoRag(file: File): Promise<DocumentoRagDto> {
+  public async subirDocumentoRag(titulo: string, file: File): Promise<DocumentoRagDto> {
     const formData = new FormData();
+    formData.append('titulo', titulo);
     formData.append('archivo', file);
     return this.requestFormData<DocumentoRagDto>('/ia/documentos', formData);
   }
 
-  public async subirNuevaVersionDocumentoRag(id: number, file: File): Promise<DocumentoRagDto> {
+  public async subirNuevaVersionDocumentoRag(id: number, titulo: string, file: File): Promise<DocumentoRagDto> {
     const formData = new FormData();
+    formData.append('titulo', titulo);
     formData.append('archivo', file);
     return this.requestFormData<DocumentoRagDto>(`/ia/documentos/${id}/versiones`, formData);
   }
@@ -656,8 +658,11 @@ class ApiClient {
     await this.request(`/ia/documentos/${id}/reindexar`, { method: 'POST' });
   }
 
-  public async desactivarDocumentoRag(id: number): Promise<void> {
-    await this.request(`/ia/documentos/${id}/desactivar`, { method: 'POST' });
+  public async desactivarDocumentoRag(id: number, estadoEsperado: string = 'INDEXADO'): Promise<void> {
+    await this.request(`/ia/documentos/${id}/desactivar`, {
+      method: 'POST',
+      body: JSON.stringify({ estadoEsperado }),
+    });
   }
 
   // --- Distribuciones y Mesas Numeradas (6 endpoints) ---
