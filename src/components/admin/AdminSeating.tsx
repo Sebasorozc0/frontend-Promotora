@@ -8,10 +8,11 @@ import {
   LocalidadMapa,
   MapaRecinto,
   MesaDto,
+  PoligonoGeo,
   SillaDto,
 } from '../../types/api';
 import { useAuth } from '../../context/AuthContext';
-import { CheckCircle, Grid, Lock, Move, Plus, Save, Send, Trash2, Users, XCircle } from 'lucide-react';
+import { CheckCircle, Circle, Grid, Lock, Move, Plus, Save, Send, Trash2, Users, XCircle } from 'lucide-react';
 import { fromNormalizedPoint, pointInPolygon, SEAT_MAP_HEIGHT, SEAT_MAP_WIDTH, svgClientPoint, toNormalizedPoint } from '../seating/geometry';
 
 type MesaLayout = Omit<MesaDto, 'id'> & { id?: number; clave: string };
@@ -25,12 +26,25 @@ type Arrastre = { tipo: 'mesa' | 'silla'; clave: string } | null;
 
 const TAMANO_PAGINA = 100;
 
-function leerPoligono(localidad?: LocalidadMapa | null) {
+function leerPoligono(localidad?: LocalidadMapa | null): PoligonoGeo | null {
   if (localidad?.geometria?.points?.length) return localidad.geometria;
   if (!localidad?.geometriaJson) return null;
   try {
-    const parsed = JSON.parse(localidad.geometriaJson);
-    return parsed?.type === 'polygon' && Array.isArray(parsed.points) ? parsed : null;
+    const parsed: unknown = JSON.parse(localidad.geometriaJson);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+
+    const candidato = parsed as { type?: unknown; points?: unknown };
+    if (candidato.type !== 'polygon' || !Array.isArray(candidato.points)) return null;
+
+    const points: [number, number][] = [];
+    for (const point of candidato.points) {
+      if (!Array.isArray(point) || point.length !== 2 ||
+        typeof point[0] !== 'number' || !Number.isFinite(point[0]) ||
+        typeof point[1] !== 'number' || !Number.isFinite(point[1])) return null;
+      points.push([point[0], point[1]]);
+    }
+
+    return points.length >= 3 ? { type: 'polygon', points } : null;
   } catch {
     return null;
   }
@@ -38,7 +52,7 @@ function leerPoligono(localidad?: LocalidadMapa | null) {
 
 function convertirDistribucion(distribucion: DistribucionDto) {
   const mesas: MesaLayout[] = distribucion.mesas.map((mesa) => ({ ...mesa, clave: `mesa-${mesa.id}` }));
-  const claves = new Map<number, string>(mesas.map((mesa) => [mesa.id, mesa.clave] as const));
+  const claves = new Map(distribucion.mesas.map((mesa) => [mesa.id, `mesa-${mesa.id}`] as const));
   const asientos: SillaLayout[] = distribucion.asientos.map((asiento) => ({
     ...asiento,
     mesaClave: asiento.mesaId ? claves.get(asiento.mesaId) || null : null,
