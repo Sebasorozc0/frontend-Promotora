@@ -59,48 +59,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Restaurar sesión de localStorage únicamente si existe usuario válido
+    // Restaurar sesión de localStorage únicamente si existe token Y usuario válido
     const token = api.getAccessToken();
     const storedUser = localStorage.getItem('promotora_user');
-    if (storedUser) {
-      try {
-        const parsed: UsuarioSesion = JSON.parse(storedUser);
-        if (parsed && parsed.email) {
-          if (token) {
-            const roleFromJwt = parseJwtRole(token);
-            if (roleFromJwt) {
-              parsed.rol = roleFromJwt;
-            }
-          }
-          setUser(parsed);
-          localStorage.setItem('promotora_user', JSON.stringify(parsed));
 
-          // Sincronizar y actualizar con datos de perfil reales en background
-          if (parsed.id && token) {
-            api.getPerfil(parsed.id).then((perfil) => {
-              if (perfil?.usuario) {
-                const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
-                const rolVerificado = (perfil.usuario.rol as RolUsuario) || parsed.rol;
-                const sincronizado: UsuarioSesion = {
-                  ...parsed,
-                  nombre: nombreCompleto || parsed.nombre,
-                  rol: rolVerificado,
-                };
-                setUser(sincronizado);
-                localStorage.setItem('promotora_user', JSON.stringify(sincronizado));
-              }
-            }).catch(() => {});
-          }
-        } else {
-          setUser(null);
-        }
-      } catch {
-        setUser(null);
-      }
-    } else {
+    if (!token || !storedUser) {
       setUser(null);
+      localStorage.removeItem('promotora_user');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const parsed: UsuarioSesion = JSON.parse(storedUser);
+      if (parsed && parsed.email) {
+        const roleFromJwt = parseJwtRole(token);
+        if (roleFromJwt) {
+          parsed.rol = roleFromJwt;
+        }
+        setUser(parsed);
+        localStorage.setItem('promotora_user', JSON.stringify(parsed));
+
+        // Sincronizar y actualizar con datos de perfil reales en background
+        if (parsed.id) {
+          api.getPerfil(parsed.id).then((perfil) => {
+            if (perfil?.usuario) {
+              const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
+              const rolVerificado = (perfil.usuario.rol as RolUsuario) || parsed.rol;
+              const sincronizado: UsuarioSesion = {
+                ...parsed,
+                nombre: nombreCompleto || parsed.nombre,
+                rol: rolVerificado,
+              };
+              setUser(sincronizado);
+              localStorage.setItem('promotora_user', JSON.stringify(sincronizado));
+            }
+          }).catch(() => {});
+        }
+      } else {
+        setUser(null);
+        localStorage.removeItem('promotora_user');
+      }
+    } catch {
+      setUser(null);
+      localStorage.removeItem('promotora_user');
     }
     setIsLoading(false);
+
+    // Escuchar expiración total de sesión para limpiar UI
+    const handleExpired = () => {
+      setUser(null);
+      localStorage.removeItem('promotora_user');
+    };
+    window.addEventListener('promotora:session-expired', handleExpired);
+    return () => {
+      window.removeEventListener('promotora:session-expired', handleExpired);
+    };
   }, []);
 
   const login = async (email: string, pass: string) => {

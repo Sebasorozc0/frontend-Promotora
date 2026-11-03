@@ -407,7 +407,7 @@ export const AdminEvents: React.FC = () => {
                     <MapPin size={14} /> {ev.recintoNombre}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Clock size={14} /> {new Date(ev.fechaInicio).toLocaleDateString('es-GT', { dateStyle: 'medium', timeStyle: 'short' })}
+                    <Clock size={14} /> {new Date(ev.fechaInicio).toLocaleString('es-GT', { dateStyle: 'medium', timeStyle: 'short' })}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Ticket size={14} /> Cupo: <strong>{ev.cupoDisponible}</strong> / {ev.cupoTotal} disponibles

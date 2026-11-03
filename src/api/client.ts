@@ -34,6 +34,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 class ApiClient {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor() {
     this.accessToken = localStorage.getItem('promotora_access_token');
@@ -59,10 +60,16 @@ class ApiClient {
   }
 
   public getAccessToken(): string | null {
+    if (!this.accessToken && typeof window !== 'undefined') {
+      this.accessToken = localStorage.getItem('promotora_access_token');
+    }
     return this.accessToken;
   }
 
   public getRefreshToken(): string | null {
+    if (!this.refreshToken && typeof window !== 'undefined') {
+      this.refreshToken = localStorage.getItem('promotora_refresh_token');
+    }
     return this.refreshToken;
   }
 
@@ -78,8 +85,9 @@ class ApiClient {
       ...customHeaders,
     };
 
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    const currentToken = this.getAccessToken();
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
     }
 
     try {
@@ -132,8 +140,9 @@ class ApiClient {
     const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
     const headers: Record<string, string> = {};
 
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    const currentToken = this.getAccessToken();
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
     }
 
     try {
@@ -164,22 +173,43 @@ class ApiClient {
   }
 
   private async tryRefreshToken(): Promise<boolean> {
-    try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: this.refreshToken }),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as LoginResponse;
-        this.setTokens(data.accessToken, data.refreshToken);
-        return true;
-      }
-    } catch {
-      // Fallback
+    if (this.refreshPromise) {
+      return this.refreshPromise;
     }
-    this.setTokens(null, null);
-    return false;
+
+    this.refreshPromise = (async () => {
+      try {
+        const tokenToRefresh = this.getRefreshToken();
+        if (!tokenToRefresh) {
+          this.setTokens(null, null);
+          return false;
+        }
+
+        const res = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: tokenToRefresh }),
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as LoginResponse;
+          this.setTokens(data.accessToken, data.refreshToken);
+          return true;
+        }
+      } catch (err) {
+        console.warn('[ApiClient] Error en refresco de token:', err);
+      } finally {
+        this.refreshPromise = null;
+      }
+
+      this.setTokens(null, null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('promotora:session-expired'));
+      }
+      return false;
+    })();
+
+    return this.refreshPromise;
   }
 
   // --- Auth ---
