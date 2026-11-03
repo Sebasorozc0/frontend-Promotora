@@ -89,11 +89,11 @@ export const EventCard: React.FC<EventCardProps> = ({ evento, onSelect, onVerMap
         </div>
 
         {/* Presenters Chips */}
-        {evento.presentadores.length > 0 && (
+        {(evento.presentadores || []).length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px', overflow: 'hidden' }}>
             <Users size={14} style={{ color: 'var(--text-muted)' }} />
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-              {evento.presentadores.map((p) => p.nombreArtistico).join(' · ')}
+              {(evento.presentadores || []).map((p) => p.nombreArtistico || (p as any).nombre).join(' · ')}
             </div>
           </div>
         )}
@@ -113,7 +113,7 @@ export const EventCard: React.FC<EventCardProps> = ({ evento, onSelect, onVerMap
               Desde
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
-              Q{evento.precioMinimo.toFixed(2)}
+              Q{(evento.precioMinimo ?? 0).toFixed(2)}
             </div>
           </div>
 
@@ -122,7 +122,7 @@ export const EventCard: React.FC<EventCardProps> = ({ evento, onSelect, onVerMap
               Cupo libre
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600 }}>
-              {evento.cupoDisponible.toLocaleString()} boletos
+              {(evento.cupoDisponible ?? 0).toLocaleString()} boletos
             </div>
           </div>
         </div>

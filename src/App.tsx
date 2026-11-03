@@ -62,7 +62,7 @@ function AppContent() {
   const [ratingResena, setRatingResena] = useState(5);
   const [comentarioResena, setComentarioResena] = useState('');
 
-  // Cargar eventos del backend si está disponible
+  // Cargar catálogo público al iniciar
   useEffect(() => {
     api.getEventos().then((res) => {
       if (res && res.items && res.items.length > 0) {
@@ -71,28 +71,36 @@ function AppContent() {
     }).catch(() => {
       // Usar mocks
     });
-
-    api.getMisBoletos().then((boletos) => {
-      if (boletos && boletos.length > 0) {
-        setMisBoletos(boletos);
-      }
-    }).catch(() => {});
-
-    api.getMisCompras().then((res) => {
-      if (res && res.items) {
-        setMisCompras(res.items);
-      }
-    }).catch(() => {});
   }, []);
 
-  // Filtrado de eventos
+  // Cargar boletos y compras SOLO cuando el usuario está autenticado
+  useEffect(() => {
+    if (user) {
+      api.getMisBoletos().then((boletos) => {
+        if (boletos && boletos.length > 0) {
+          setMisBoletos(boletos);
+        }
+      }).catch(() => {});
+
+      api.getMisCompras().then((res) => {
+        if (res && res.items) {
+          setMisCompras(res.items);
+        }
+      }).catch(() => {});
+    } else {
+      setMisBoletos(MOCK_BOLETOS);
+      setMisCompras([]);
+    }
+  }, [user]);
+
+  // Filtrado de eventos defensivo
   const eventosFiltrados = eventos.filter((ev) => {
     const coincideCategoria = categoriaActiva === null || ev.categoriaId === categoriaActiva;
     const coincideBusqueda =
       !busqueda.trim() ||
-      ev.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      ev.recintoNombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      ev.presentadores.some((p) => p.nombreArtistico.toLowerCase().includes(busqueda.toLowerCase()));
+      (ev.titulo || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+      (ev.recintoNombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+      (ev.presentadores || []).some((p) => ((p.nombreArtistico || (p as any).nombre) || '').toLowerCase().includes(busqueda.toLowerCase()));
     return coincideCategoria && coincideBusqueda;
   });
 

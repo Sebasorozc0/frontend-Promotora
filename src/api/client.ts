@@ -229,6 +229,66 @@ class ApiClient {
   }
 
   // --- Catálogo Público ---
+  public normalizarEventoCatalogo(raw: any): EventoCatalogo {
+    const presentadoresRaw = Array.isArray(raw.presentadores) ? raw.presentadores : [];
+    const presentadores = presentadoresRaw.map((p: any) => ({
+      id: p.id || 0,
+      nombreArtistico: p.nombreArtistico || p.nombre || 'Artista',
+      biografia: p.biografia || '',
+      fotoPerfilUrl: p.fotoPerfilUrl || p.imagenUrl || null,
+      promedioCalificacion: typeof p.promedioCalificacion === 'number' ? p.promedioCalificacion : 5.0,
+    }));
+
+    return {
+      id: raw.id,
+      titulo: raw.titulo || raw.nombre || 'Evento ASA',
+      descripcion: raw.descripcion || '',
+      categoriaId: raw.categoriaId || (typeof raw.categoria === 'object' ? raw.categoria?.id : 1),
+      categoriaNombre: raw.categoriaNombre || (typeof raw.categoria === 'object' ? raw.categoria?.nombre : raw.categoria) || 'General',
+      recintoId: raw.recintoId || (typeof raw.recinto === 'object' ? raw.recinto?.id : 1),
+      recintoNombre: raw.recintoNombre || (typeof raw.recinto === 'object' ? raw.recinto?.nombre : raw.recinto) || 'Recinto',
+      recintoCiudad: raw.recintoCiudad || (typeof raw.recinto === 'object' ? raw.recinto?.ciudad : raw.ciudad) || 'Guatemala',
+      fechaInicio: raw.fechaInicio,
+      fechaFin: raw.fechaFin || raw.fechaInicio,
+      aperturaPuertas: raw.aperturaPuertas || raw.fechaInicio,
+      imagenFlyerUrl: raw.imagenFlyerUrl || raw.imagenUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+      estado: raw.estado || 'EN_VENTA',
+      precioMinimo: typeof raw.precioMinimo === 'number' ? raw.precioMinimo : 100.0,
+      precioMaximo: typeof raw.precioMaximo === 'number' ? raw.precioMaximo : 350.0,
+      cupoTotal: typeof raw.cupoTotal === 'number' ? raw.cupoTotal : 1000,
+      cupoDisponible: typeof raw.cupoDisponible === 'number' ? raw.cupoDisponible : 500,
+      maxBoletosPorCompra: raw.maxBoletosPorCompra || 6,
+      presentadores,
+    };
+  }
+
+  public normalizarDetalleEvento(raw: any): DetalleEventoPublico {
+    const base = this.normalizarEventoCatalogo(raw);
+    const tiposEntradaRaw = Array.isArray(raw.tiposEntrada) ? raw.tiposEntrada : [];
+    const tiposEntrada = tiposEntradaRaw.map((t: any) => ({
+      id: t.id,
+      nombre: t.nombre,
+      precioUnitario: typeof t.precioUnitario === 'number' ? t.precioUnitario : (t.precio || 0),
+      cupoTotal: t.cupoTotal || 100,
+      cupoDisponible: typeof t.cupoDisponible === 'number' ? t.cupoDisponible : (t.cupoTotal || 100),
+      localidadId: t.localidadId,
+      localidadNombre: t.localidadNombre || (t.localidadId ? `Localidad #${t.localidadId}` : undefined),
+    }));
+
+    if (tiposEntrada.length > 0) {
+      const precios = tiposEntrada.map((t: any) => t.precioUnitario);
+      base.precioMinimo = Math.min(...precios);
+      base.precioMaximo = Math.max(...precios);
+      base.cupoTotal = tiposEntrada.reduce((acc: number, t: any) => acc + (t.cupoTotal || 0), 0);
+      base.cupoDisponible = tiposEntrada.reduce((acc: number, t: any) => acc + (t.cupoDisponible || 0), 0);
+    }
+
+    return {
+      ...base,
+      tiposEntrada,
+    };
+  }
+
   public async getEventos(params?: {
     page?: number;
     pageSize?: number;
@@ -243,11 +303,16 @@ class ApiClient {
     if (params?.recintoId) q.set('recintoId', String(params.recintoId));
     if (params?.busqueda) q.set('busqueda', params.busqueda);
 
-    return this.request<PaginatedResult<EventoCatalogo>>(`/catalogo/eventos?${q.toString()}`);
+    const res = await this.request<any>(`/catalogo/eventos?${q.toString()}`);
+    if (res && Array.isArray(res.items)) {
+      res.items = res.items.map((raw: any) => this.normalizarEventoCatalogo(raw));
+    }
+    return res;
   }
 
   public async getEvento(id: number): Promise<DetalleEventoPublico> {
-    return this.request<DetalleEventoPublico>(`/catalogo/eventos/${id}`);
+    const raw = await this.request<any>(`/catalogo/eventos/${id}`);
+    return this.normalizarDetalleEvento(raw);
   }
 
   public async getResenasEvento(eventoId: number): Promise<ResenaPublica[]> {
