@@ -5,6 +5,7 @@ import { ShieldCheck, Check, X, FileText, Upload, RefreshCw, MapPin, Tag, Calend
 import { VenueMapEditor } from './VenueMapEditor';
 import { AdminCatalog } from './admin/AdminCatalog';
 import { AdminEvents } from './admin/AdminEvents';
+import { AdminFinance } from './admin/AdminFinance';
 
 export const AdminPanel: React.FC = () => {
   const [resenas, setResenas] = useState<ResenaPublica[]>([
@@ -278,13 +279,7 @@ export const AdminPanel: React.FC = () => {
       {tabAdmin === 'EVENTOS' && <AdminEvents />}
 
       {/* Tab: Finanzas Placeholder */}
-      {tabAdmin === 'FINANZAS' && (
-        <div style={{ padding: '30px', textAlign: 'center', backgroundColor: '#FFF', border: '2px solid var(--border-strong)' }}>
-          <DollarSign size={40} color="var(--accent-emerald)" style={{ marginBottom: '10px' }} />
-          <h3>Módulo de Finanzas & Liquidación</h3>
-          <p style={{ color: 'var(--text-secondary)' }}>Seleccione las pestañas superiores para operar el sistema contable.</p>
-        </div>
-      )}
+      {tabAdmin === 'FINANZAS' && <AdminFinance />}
 
       {/* Tab: Distribución Placeholder */}
       {tabAdmin === 'DISTRIBUCION' && (
