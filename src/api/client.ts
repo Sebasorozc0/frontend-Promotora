@@ -513,10 +513,17 @@ class ApiClient {
     await this.request(`/eventos/${id}`, { method: 'DELETE' });
   }
 
-  public async actualizarEstadoEvento(id: number, nuevoEstado: string): Promise<void> {
+  public async actualizarEstadoEvento(
+    id: number,
+    nuevoEstado: string,
+    estadoEsperado?: string
+  ): Promise<void> {
     await this.request(`/eventos/${id}/estado`, {
       method: 'PUT',
-      body: JSON.stringify({ nuevoEstado }),
+      body: JSON.stringify({
+        estadoNuevo: nuevoEstado,
+        estadoEsperado: estadoEsperado || nuevoEstado,
+      }),
     });
   }
 

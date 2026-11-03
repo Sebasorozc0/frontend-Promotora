@@ -4,6 +4,7 @@ import { ResenaPublica } from '../types/api';
 import { ShieldCheck, Check, X, FileText, Upload, RefreshCw, MapPin, Tag, Calendar, DollarSign, MessageSquare, Brain, Grid, Users } from 'lucide-react';
 import { VenueMapEditor } from './VenueMapEditor';
 import { AdminCatalog } from './admin/AdminCatalog';
+import { AdminEvents } from './admin/AdminEvents';
 
 export const AdminPanel: React.FC = () => {
   const [resenas, setResenas] = useState<ResenaPublica[]>([
@@ -274,39 +275,7 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* Tab: Eventos Activos */}
-      {tabAdmin === 'EVENTOS' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-          {MOCK_EVENTOS.map((ev) => (
-            <div
-              key={ev.id}
-              style={{
-                backgroundColor: '#FFF',
-                border: '2px solid var(--border-strong)',
-                boxShadow: 'var(--shadow-crisp-sm)',
-                padding: '18px'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span className="badge badge-categoria">{ev.categoriaNombre}</span>
-                <span className="badge badge-valido">{ev.estado}</span>
-              </div>
-              <h4 style={{ fontSize: '1.15rem', marginBottom: '8px' }}>{ev.titulo}</h4>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                Recinto: {ev.recintoNombre} <br />
-                Cupo libre: {ev.cupoDisponible} / {ev.cupoTotal}
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-sm btn-outline" style={{ width: '100%' }}>
-                  Editar Fechas
-                </button>
-                <button className="btn btn-sm btn-inverse" style={{ width: '100%' }}>
-                  Ver Tipos Entrada
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {tabAdmin === 'EVENTOS' && <AdminEvents />}
 
       {/* Tab: Finanzas Placeholder */}
       {tabAdmin === 'FINANZAS' && (
