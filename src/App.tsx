@@ -644,9 +644,9 @@ function AppContent() {
     });
   }, []);
 
-  // Cargar boletos y compras SOLO cuando el usuario está autenticado
+  // Cargar boletos y compras SOLO cuando el usuario es CLIENTE (admin y dueños no tienen boletos de consumidor)
   useEffect(() => {
-    if (user) {
+    if (user && user.rol === 'CLIENTE') {
       api.getMisBoletos().then((boletos) => {
         if (boletos && boletos.length > 0) {
           setMisBoletos(boletos);

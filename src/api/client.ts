@@ -584,7 +584,8 @@ class ApiClient {
 
   // --- Categorías (5 endpoints) ---
   public async getCategorias(): Promise<CategoriaDetalleDto[]> {
-    return this.request<CategoriaDetalleDto[]>('/categorias');
+    const res = await this.request<any>('/categorias');
+    return Array.isArray(res) ? res : res?.items || [];
   }
 
   public async getCategoria(id: number): Promise<CategoriaDetalleDto> {
@@ -611,7 +612,8 @@ class ApiClient {
 
   // --- Presentadores / Artistas (6 endpoints) ---
   public async getPresentadores(): Promise<PresentadorDetalleDto[]> {
-    return this.request<PresentadorDetalleDto[]>('/presentadores');
+    const res = await this.request<any>('/presentadores');
+    return Array.isArray(res) ? res : res?.items || [];
   }
 
   public async getPresentador(id: number): Promise<PresentadorDetalleDto> {

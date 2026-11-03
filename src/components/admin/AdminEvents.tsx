@@ -79,10 +79,20 @@ export const AdminEvents: React.FC = () => {
         api.getRecintos(),
         api.getCategorias()
       ]);
-      setRecintos(recs || []);
-      setCategorias(cats || []);
+      const listaRecs = Array.isArray(recs) ? recs : (recs as any)?.items || [];
+      const listaCats = Array.isArray(cats) ? cats : (cats as any)?.items || [];
+      setRecintos(listaRecs);
+      setCategorias(listaCats);
+      if (listaRecs.length > 0 && !eventoForm.recintoId) {
+        setEventoForm((prev) => ({ ...prev, recintoId: listaRecs[0].id }));
+      }
+      if (listaCats.length > 0 && !eventoForm.categoriaId) {
+        setEventoForm((prev) => ({ ...prev, categoriaId: listaCats[0].id }));
+      }
     } catch (e) {
       console.warn('Error cargando catálogos auxiliares:', e);
+      setRecintos([]);
+      setCategorias([]);
     }
   };
 
@@ -503,7 +513,7 @@ export const AdminEvents: React.FC = () => {
                 className="input-base"
                 required
               >
-                {recintos.map((r) => (
+                {(Array.isArray(recintos) ? recintos : []).map((r) => (
                   <option key={r.id} value={r.id}>{r.nombre}</option>
                 ))}
               </select>
@@ -519,7 +529,7 @@ export const AdminEvents: React.FC = () => {
                 className="input-base"
                 required
               >
-                {categorias.map((c) => (
+                {(Array.isArray(categorias) ? categorias : []).map((c) => (
                   <option key={c.id} value={c.id}>{c.nombre}</option>
                 ))}
               </select>
