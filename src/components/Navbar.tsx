@@ -4,7 +4,6 @@ import { RolUsuario } from '../types/api';
 import { 
   Ticket, 
   ShoppingBag, 
-  Bot, 
   QrCode, 
   ShieldCheck, 
   LogOut, 
@@ -19,6 +18,7 @@ interface NavbarProps {
   onOpenJose: () => void;
   onOpenScanner: () => void;
   onOpenAuth: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -27,6 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenJose,
   onOpenScanner,
   onOpenAuth,
+  onOpenProfile,
 }) => {
   const { user, isAuthenticated, logout, setSimulatedRole } = useAuth();
 
@@ -124,7 +125,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {user?.rol === 'ADMINISTRADOR' && (
+          {(user?.rol === 'ADMINISTRADOR' || user?.rol === 'DUENO_RECINTO') && (
             <button
               onClick={() => setCurrentTab('admin')}
               className={`btn btn-sm ${currentTab === 'admin' ? 'btn-inverse' : 'btn-outline'}`}
@@ -194,19 +195,26 @@ export const Navbar: React.FC<NavbarProps> = ({
             </select>
           </div>
 
-          {/* Auth Button */}
+          {/* Auth Button / User Profile */}
           {isAuthenticated ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                backgroundColor: 'var(--bg-canvas)',
-                padding: '4px 8px',
-                border: '1px solid var(--border-medium)',
-              }}>
+              <button
+                onClick={onOpenProfile}
+                className="btn btn-sm btn-outline"
+                title="Ver y editar mi perfil de usuario"
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: 'var(--bg-canvas)'
+                }}
+              >
+                <User size={14} />
                 {user?.nombre.split(' ')[0]}
-              </div>
+              </button>
               <button
                 onClick={logout}
                 className="btn btn-sm btn-outline"

@@ -1,18 +1,32 @@
 import {
+  ActualizarUsuarioRequest,
+  AltaAdministradorRequest,
+  AltaDuenoRequest,
   BoletoResponse,
+  CategoriaDetalleDto,
   CompraResponse,
   ConsultaIaResponse,
   CrearCompraRequest,
+  CuentaFinancieraDto,
   DatosLocalidadRequest,
   DetalleEventoPublico,
+  DistribucionDto,
+  DocumentoRagDto,
   EventoCatalogo,
+  EventoPresentadorItemDto,
   LocalidadMapa,
   LoginResponse,
   MapaRecinto,
+  MovimientoFinancieroDto,
   PaginatedResult,
+  PresentadorDetalleDto,
   RecintoPublico,
   ResenaPublica,
+  SillaDto,
+  UsuarioDetalleDto,
+  UsuarioDto,
   UsuarioSesion,
+  UsuariosPaginaDto,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -348,6 +362,319 @@ class ApiClient {
     return this.request<ConsultaIaResponse>('/ia/consultas', {
       method: 'POST',
       body: JSON.stringify({ consulta, sessionId }),
+    });
+  }
+
+
+  // --- Usuarios y Perfiles (6 endpoints) ---
+  public async getPerfil(id: number): Promise<UsuarioDetalleDto> {
+    return this.request<UsuarioDetalleDto>(`/usuarios/${id}`);
+  }
+
+  public async actualizarPerfil(id: number, data: ActualizarUsuarioRequest): Promise<UsuarioDetalleDto> {
+    return this.request<UsuarioDetalleDto>(`/usuarios/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async getUsuarios(page: number = 1, pageSize: number = 20): Promise<UsuariosPaginaDto> {
+    return this.request<UsuariosPaginaDto>(`/usuarios?page=${page}&pageSize=${pageSize}`);
+  }
+
+  public async darBajaUsuario(id: number): Promise<void> {
+    await this.request(`/usuarios/${id}`, { method: 'DELETE' });
+  }
+
+  public async altaAdministrador(data: AltaAdministradorRequest): Promise<UsuarioDto> {
+    return this.request<UsuarioDto>('/usuarios/administradores', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async altaDuenoRecinto(data: AltaDuenoRequest): Promise<UsuarioDto> {
+    return this.request<UsuarioDto>('/usuarios/duenos-recinto', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // --- Categorías (5 endpoints) ---
+  public async getCategorias(): Promise<CategoriaDetalleDto[]> {
+    return this.request<CategoriaDetalleDto[]>('/categorias');
+  }
+
+  public async getCategoria(id: number): Promise<CategoriaDetalleDto> {
+    return this.request<CategoriaDetalleDto>(`/categorias/${id}`);
+  }
+
+  public async crearCategoria(data: { nombre: string; descripcion?: string }): Promise<CategoriaDetalleDto> {
+    return this.request<CategoriaDetalleDto>('/categorias', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async actualizarCategoria(id: number, data: { nombre: string; descripcion?: string }): Promise<CategoriaDetalleDto> {
+    return this.request<CategoriaDetalleDto>(`/categorias/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async eliminarCategoria(id: number): Promise<void> {
+    await this.request(`/categorias/${id}`, { method: 'DELETE' });
+  }
+
+  // --- Presentadores / Artistas (6 endpoints) ---
+  public async getPresentadores(): Promise<PresentadorDetalleDto[]> {
+    return this.request<PresentadorDetalleDto[]>('/presentadores');
+  }
+
+  public async getPresentador(id: number): Promise<PresentadorDetalleDto> {
+    return this.request<PresentadorDetalleDto>(`/presentadores/${id}`);
+  }
+
+  public async crearPresentador(data: { nombreArtistico: string; biografia?: string }): Promise<PresentadorDetalleDto> {
+    return this.request<PresentadorDetalleDto>('/presentadores', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async actualizarPresentador(id: number, data: { nombreArtistico: string; biografia?: string }): Promise<PresentadorDetalleDto> {
+    return this.request<PresentadorDetalleDto>(`/presentadores/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async eliminarPresentador(id: number): Promise<void> {
+    await this.request(`/presentadores/${id}`, { method: 'DELETE' });
+  }
+
+  public async subirFotoPresentador(id: number, file: File): Promise<{ url: string }> {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    return this.requestFormData<{ url: string }>(`/presentadores/${id}/imagen`, formData);
+  }
+
+  public async getCalificacionPresentador(id: number): Promise<{ promedio: number; totalResenas: number }> {
+    return this.request<{ promedio: number; totalResenas: number }>(`/presentadores/${id}/calificacion`);
+  }
+
+  // --- Asociación Evento-Presentador (4 endpoints) ---
+  public async getEventoPresentadores(eventoId: number): Promise<EventoPresentadorItemDto[]> {
+    return this.request<EventoPresentadorItemDto[]>(`/eventos/${eventoId}/presentadores`);
+  }
+
+  public async asignarPresentadorEvento(eventoId: number, data: { presentadorId: number; orden: number; rol?: string }): Promise<void> {
+    await this.request(`/eventos/${eventoId}/presentadores`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async actualizarPresentadorEvento(eventoId: number, presentadorId: number, data: { orden: number; rol?: string }): Promise<void> {
+    await this.request(`/eventos/${eventoId}/presentadores/${presentadorId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async quitarPresentadorEvento(eventoId: number, presentadorId: number): Promise<void> {
+    await this.request(`/eventos/${eventoId}/presentadores/${presentadorId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // --- Gestión de Eventos Admin (6 endpoints) ---
+  public async getEventosAdmin(): Promise<EventoCatalogo[]> {
+    const res = await this.request<any>('/eventos');
+    return Array.isArray(res) ? res : res.items || [];
+  }
+
+  public async crearEvento(data: any): Promise<EventoCatalogo> {
+    return this.request<EventoCatalogo>('/eventos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async actualizarEvento(id: number, data: any): Promise<EventoCatalogo> {
+    return this.request<EventoCatalogo>(`/eventos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async eliminarEvento(id: number): Promise<void> {
+    await this.request(`/eventos/${id}`, { method: 'DELETE' });
+  }
+
+  public async actualizarEstadoEvento(id: number, nuevoEstado: string): Promise<void> {
+    await this.request(`/eventos/${id}/estado`, {
+      method: 'PUT',
+      body: JSON.stringify({ nuevoEstado }),
+    });
+  }
+
+  public async subirImagenEvento(id: number, file: File): Promise<{ url: string }> {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    return this.requestFormData<{ url: string }>(`/eventos/${id}/imagen`, formData);
+  }
+
+  // --- Tipos de Entrada (5 endpoints) ---
+  public async getTiposEntrada(eventoId: number): Promise<any[]> {
+    return this.request<any[]>(`/eventos/${eventoId}/tipos-entrada`);
+  }
+
+  public async getTipoEntrada(eventoId: number, id: number): Promise<any> {
+    return this.request<any>(`/eventos/${eventoId}/tipos-entrada/${id}`);
+  }
+
+  public async crearTipoEntrada(eventoId: number, data: any): Promise<any> {
+    return this.request<any>(`/eventos/${eventoId}/tipos-entrada`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async actualizarTipoEntrada(eventoId: number, id: number, data: any): Promise<any> {
+    return this.request<any>(`/eventos/${eventoId}/tipos-entrada/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async eliminarTipoEntrada(eventoId: number, id: number): Promise<void> {
+    await this.request(`/eventos/${eventoId}/tipos-entrada/${id}`, { method: 'DELETE' });
+  }
+
+  // --- Finanzas, Cuentas, Liquidaciones y Reembolsos (6 endpoints) ---
+  public async getCuentas(): Promise<CuentaFinancieraDto[]> {
+    const res = await this.request<any>('/cuentas');
+    return Array.isArray(res) ? res : res.items || [];
+  }
+
+  public async getCuenta(id: number): Promise<CuentaFinancieraDto> {
+    return this.request<CuentaFinancieraDto>(`/cuentas/${id}`);
+  }
+
+  public async getMovimientosCuenta(id: number, params?: { page?: number; pageSize?: number }): Promise<PaginatedResult<MovimientoFinancieroDto>> {
+    const q = new URLSearchParams();
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    return this.request<PaginatedResult<MovimientoFinancieroDto>>(`/cuentas/${id}/movimientos?${q.toString()}`);
+  }
+
+  public async liquidarCuenta(id: number, monto: number, idempotencyKey: string = crypto.randomUUID()): Promise<void> {
+    await this.request(`/cuentas/${id}/liquidar`, {
+      method: 'POST',
+      body: JSON.stringify({ monto }),
+    }, {
+      'Idempotency-Key': idempotencyKey,
+    });
+  }
+
+  public async cerrarCuenta(id: number): Promise<void> {
+    await this.request(`/cuentas/${id}/cerrar`, { method: 'POST' });
+  }
+
+  public async reembolsarCompra(publicId: string): Promise<void> {
+    await this.request(`/compras/${publicId}/reembolsar`, { method: 'POST' });
+  }
+
+  // --- Moderación y Gestión de Reseñas (4 endpoints) ---
+  public async getColaResenas(params?: { page?: number; pageSize?: number; estado?: string; eventoId?: number }): Promise<PaginatedResult<ResenaPublica>> {
+    const q = new URLSearchParams();
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    if (params?.estado) q.set('estado', params.estado);
+    if (params?.eventoId) q.set('eventoId', String(params.eventoId));
+    return this.request<PaginatedResult<ResenaPublica>>(`/resenas?${q.toString()}`);
+  }
+
+  public async moderarResena(id: number, estadoNuevo: 'APROBADA' | 'RECHAZADA'): Promise<void> {
+    await this.request(`/resenas/${id}/moderar`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estadoNuevo }),
+    });
+  }
+
+  public async editarResena(id: number, data: { calificacion: number; comentario: string }): Promise<void> {
+    await this.request(`/resenas/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async retirarResena(id: number): Promise<void> {
+    await this.request(`/resenas/${id}/retirar`, { method: 'POST' });
+  }
+
+  // --- IA y Documentos RAG (6 endpoints) ---
+  public async getDocumentosRag(page: number = 1, pageSize: number = 20): Promise<PaginatedResult<DocumentoRagDto>> {
+    return this.request<PaginatedResult<DocumentoRagDto>>(`/ia/documentos?page=${page}&pageSize=${pageSize}`);
+  }
+
+  public async getDocumentoRag(id: number): Promise<DocumentoRagDto> {
+    return this.request<DocumentoRagDto>(`/ia/documentos/${id}`);
+  }
+
+  public async subirDocumentoRag(file: File): Promise<DocumentoRagDto> {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    return this.requestFormData<DocumentoRagDto>('/ia/documentos', formData);
+  }
+
+  public async subirNuevaVersionDocumentoRag(id: number, file: File): Promise<DocumentoRagDto> {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    return this.requestFormData<DocumentoRagDto>(`/ia/documentos/${id}/versiones`, formData);
+  }
+
+  public async reindexarDocumentoRag(id: number): Promise<void> {
+    await this.request(`/ia/documentos/${id}/reindexar`, { method: 'POST' });
+  }
+
+  public async desactivarDocumentoRag(id: number): Promise<void> {
+    await this.request(`/ia/documentos/${id}/desactivar`, { method: 'POST' });
+  }
+
+  // --- Distribuciones y Mesas Numeradas (6 endpoints) ---
+  public async getDistribucion(eventoId: number, localidadId: number): Promise<DistribucionDto> {
+    return this.request<DistribucionDto>(`/eventos/${eventoId}/localidades/${localidadId}/distribucion`);
+  }
+
+  public async guardarDistribucion(eventoId: number, localidadId: number, data: any): Promise<DistribucionDto> {
+    return this.request<DistribucionDto>(`/eventos/${eventoId}/localidades/${localidadId}/distribucion`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async publicarDistribucion(eventoId: number, localidadId: number): Promise<void> {
+    await this.request(`/eventos/${eventoId}/localidades/${localidadId}/distribucion/publicar`, { method: 'POST' });
+  }
+
+  public async getAsientos(eventoId: number, localidadId: number): Promise<SillaDto[]> {
+    return this.request<SillaDto[]>(`/eventos/${eventoId}/localidades/${localidadId}/asientos`);
+  }
+
+  public async bloquearAsiento(eventoId: number, localidadId: number, asientoId: number): Promise<void> {
+    await this.request(`/eventos/${eventoId}/localidades/${localidadId}/asientos/bloquear`, {
+      method: 'POST',
+      body: JSON.stringify({ asientoId }),
+    });
+  }
+
+  public async desbloquearAsiento(eventoId: number, localidadId: number, asientoId: number): Promise<void> {
+    await this.request(`/eventos/${eventoId}/localidades/${localidadId}/asientos/desbloquear`, {
+      method: 'POST',
+      body: JSON.stringify({ asientoId }),
     });
   }
 

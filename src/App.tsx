@@ -11,6 +11,7 @@ import { ScannerModal } from './components/ScannerModal';
 import { AuthModal } from './components/AuthModal';
 import { PasswordChangeModal } from './components/PasswordChangeModal';
 import { AdminPanel } from './components/AdminPanel';
+import { UserProfileModal } from './components/UserProfileModal';
 import { api, MOCK_EVENTOS, MOCK_EVENTO_DETALLE, MOCK_BOLETOS } from './api/client';
 import { EventoCatalogo, DetalleEventoPublico, BoletoResponse, CompraResponse, ResenaPublica } from './types/api';
 import { 
@@ -53,6 +54,8 @@ function AppContent() {
   const [isJoseOpen, setIsJoseOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isManualPasswordChangeOpen, setIsManualPasswordChangeOpen] = useState(false);
 
   // Reseña modal para boleto usado
   const [boletoParaResena, setBoletoParaResena] = useState<BoletoResponse | null>(null);
@@ -172,6 +175,7 @@ function AppContent() {
         onOpenJose={() => setIsJoseOpen(true)}
         onOpenScanner={() => setIsScannerOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -770,7 +774,8 @@ function AppContent() {
         onClose={() => setIsAuthOpen(false)}
       />
 
-      <PasswordChangeModal />
+      <PasswordChangeModal isOpen={isManualPasswordChangeOpen} onClose={() => setIsManualPasswordChangeOpen(false)} />
+      <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} usuarioId={user?.id || 1} onOpenPasswordChange={() => setIsManualPasswordChangeOpen(true)} />
 
       {/* Modal para Crear Reseña con Boleto USADO */}
       {boletoParaResena && (
