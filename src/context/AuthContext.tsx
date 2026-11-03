@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { RolUsuario, UsuarioSesion } from '../types/api';
+import { UsuarioSesion } from '../types/api';
 
 interface AuthContextType {
   user: UsuarioSesion | null;
@@ -18,7 +18,6 @@ interface AuthContextType {
   }) => Promise<void>;
   logout: () => Promise<void>;
   cambiarPassword: (actual: string, nueva: string) => Promise<void>;
-  setSimulatedRole: (rol: RolUsuario) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -90,16 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('promotora_user', JSON.stringify(updated));
   };
 
-  const setSimulatedRole = (rol: RolUsuario) => {
-    if (!user) return;
-    const updated: UsuarioSesion = {
-      ...user,
-      rol,
-      nombre: rol === 'ADMINISTRADOR' ? 'Admin Promotora' : rol === 'DUENO_RECINTO' ? 'Dueño Cayalá' : 'Carlos Mendoza',
-    };
-    setUser(updated);
-    localStorage.setItem('promotora_user', JSON.stringify(updated));
-  };
+
 
   return (
     <AuthContext.Provider
@@ -112,7 +102,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registro,
         logout,
         cambiarPassword,
-        setSimulatedRole,
       }}
     >
       {children}

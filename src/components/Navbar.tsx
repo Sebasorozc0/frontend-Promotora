@@ -1,7 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { RolUsuario } from '../types/api';
 import { 
   Ticket, 
   ShoppingBag, 
