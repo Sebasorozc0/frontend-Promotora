@@ -146,6 +146,7 @@ export interface ItemCompraRequest {
   tipoEntradaId: number;
   cantidad: number;
   asistentes?: AsistenteItem[];
+  asientoIds?: number[];
 }
 
 export interface CrearCompraRequest {
@@ -180,8 +181,9 @@ export interface CompraResponse {
 }
 
 export interface BoletoResponse {
-  id: number;
-  compraId: number;
+  id: number | string;
+  publicId?: string;
+  compraId: number | string;
   publicIdCompra: string;
   eventoId: number;
   eventoTitulo: string;
@@ -192,9 +194,46 @@ export interface BoletoResponse {
   localidadNombre?: string;
   codigoQr: string;
   estado: EstadoBoleto;
-  precioFinal: number;
+  precioFinal?: number;
   asistenteNombre?: string;
   fechaUso?: string;
+  ubicacion?: {
+    asientoId: number;
+    silla: string;
+    fila?: string | null;
+    mesaId?: number | null;
+    mesa?: string | null;
+    localidadId: number;
+  } | null;
+}
+
+export interface BoletoClienteApiDto {
+  publicId: string;
+  compraPublicId: string;
+  eventoId: number;
+  tipoEntradaId: number;
+  codigoQr: string;
+  estado: EstadoBoleto;
+  asistente: {
+    nombreAsistente?: string | null;
+    documentoIdentidad?: string | null;
+    datosExtraJson?: string | null;
+  };
+  fechaEmision: string;
+  fechaUso?: string | null;
+  ubicacion?: BoletoResponse['ubicacion'];
+  eventoTitulo: string;
+  recintoNombre: string;
+  fechaInicio: string;
+  tipoEntradaNombre: string;
+  precioUnitario: number;
+}
+
+export interface ApiPaginaDto<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface ResenaPublica {
@@ -362,28 +401,60 @@ export interface DocumentoRagDto {
 // Distribución de Asientos Numerados
 export interface MesaDto {
   id: number;
-  numero: number;
+  etiqueta: string;
+  modalidad: 'COMPLETA' | 'POR_SILLA';
+  tipoEntradaId: number;
   capacidad: number;
   x: number;
   y: number;
-  radio: number;
-  bloqueada?: boolean;
+  clave?: string;
 }
 
 export interface SillaDto {
   id: number;
   mesaId?: number | null;
-  numero: number;
+  etiqueta: string;
   fila?: string | null;
+  tipoEntradaId: number;
   x: number;
   y: number;
   estado: 'DISPONIBLE' | 'RESERVADO' | 'VENDIDO' | 'BLOQUEADO';
+  mesaClave?: string | null;
 }
 
 export interface DistribucionDto {
+  id: number;
   eventoId: number;
   localidadId: number;
-  publicado: boolean;
+  estado: 'BORRADOR' | 'PUBLICADA';
+  imagenPlanoUrl?: string | null;
+  page: number;
+  pageSize: number;
+  totalMesas: number;
+  totalAsientos: number;
   mesas: MesaDto[];
-  sillas: SillaDto[];
+  asientos: SillaDto[];
+}
+
+export interface DatosDistribucionRequest {
+  imagenPlanoUrl?: string | null;
+  mesas: Array<{
+    id?: number | null;
+    clave: string;
+    etiqueta: string;
+    modalidad: 'COMPLETA' | 'POR_SILLA';
+    tipoEntradaId: number;
+    x: number;
+    y: number;
+  }>;
+  asientos: Array<{
+    id?: number | null;
+    mesaClave?: string | null;
+    etiqueta: string;
+    fila?: string | null;
+    tipoEntradaId: number;
+    x: number;
+    y: number;
+    bloqueado?: boolean;
+  }>;
 }
