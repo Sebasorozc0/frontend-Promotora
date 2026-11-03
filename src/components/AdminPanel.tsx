@@ -9,6 +9,7 @@ import { AdminFinance } from './admin/AdminFinance';
 import { AdminReviews } from './admin/AdminReviews';
 import { AdminRag } from './admin/AdminRag';
 import { AdminSeating } from './admin/AdminSeating';
+import { AdminUsers } from './admin/AdminUsers';
 
 export const AdminPanel: React.FC = () => {
   const [resenas, setResenas] = useState<ResenaPublica[]>([
@@ -161,14 +162,8 @@ export const AdminPanel: React.FC = () => {
       {/* Tab: Silletería y Distribución Numerada */}
       {tabAdmin === 'DISTRIBUCION' && <AdminSeating />}
 
-      {/* Tab: Usuarios Placeholder */}
-      {tabAdmin === 'USUARIOS' && (
-        <div style={{ padding: '30px', textAlign: 'center', backgroundColor: '#FFF', border: '2px solid var(--border-strong)' }}>
-          <Users size={40} color="var(--accent-amber)" style={{ marginBottom: '10px' }} />
-          <h3>Módulo de Usuarios & Credenciales ASA</h3>
-          <p style={{ color: 'var(--text-secondary)' }}>Administre altas de administradores y dueños de recinto.</p>
-        </div>
-      )}
+      {/* Tab: Usuarios y Roles */}
+      {tabAdmin === 'USUARIOS' && <AdminUsers />}
 
     </div>
   );
