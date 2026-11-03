@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { MOCK_RESENAS, MOCK_EVENTOS } from '../api/client';
-import { ResenaPublica } from '../types/api';
-import { ShieldCheck, Check, X, FileText, Upload, RefreshCw, MapPin, Tag, Calendar, DollarSign, MessageSquare, Brain, Grid, Users } from 'lucide-react';
+import React from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ShieldCheck, Tag, Calendar, DollarSign, MessageSquare, Brain, Grid, Users, MapPin } from 'lucide-react';
 import { VenueMapEditor } from './VenueMapEditor';
 import { AdminCatalog } from './admin/AdminCatalog';
 import { AdminEvents } from './admin/AdminEvents';
@@ -11,50 +10,27 @@ import { AdminRag } from './admin/AdminRag';
 import { AdminSeating } from './admin/AdminSeating';
 import { AdminUsers } from './admin/AdminUsers';
 
+type AdminTabKey = 'CATALOGO' | 'RECINTOS' | 'MODERACION' | 'RAG' | 'EVENTOS' | 'FINANZAS' | 'DISTRIBUCION' | 'USUARIOS';
+
 export const AdminPanel: React.FC = () => {
-  const [resenas, setResenas] = useState<ResenaPublica[]>([
-    {
-      id: 101,
-      eventoId: 1,
-      eventoTitulo: 'VIVA FEST 2026',
-      clienteNombre: 'Estuardo R.',
-      calificacion: 5,
-      comentario: 'La zona VIP y el sonido estuvieron espectaculares. Excelente seguridad en el acceso.',
-      estado: 'PENDIENTE',
-      creadoEn: new Date().toISOString(),
-    },
-    {
-      id: 102,
-      eventoId: 2,
-      eventoTitulo: 'GRAN CARRERA 10K',
-      clienteNombre: 'Lucía M.',
-      calificacion: 4,
-      comentario: 'La ruta de Reforma fue muy fluida. Buena hidratación en los kilómetros 5 y 8.',
-      estado: 'PENDIENTE',
-      creadoEn: new Date().toISOString(),
-    },
-  ]);
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
 
-  const [documentos, setDocumentos] = useState([
-    { id: 1, nombre: 'Reglamento_General_Eventos_2026.pdf', version: 1, estado: 'INDEXADO', chunks: 24, fecha: '2026-10-18' },
-    { id: 2, nombre: 'Calendario_Temporada_2026.docx', version: 1, estado: 'INDEXADO', chunks: 8, fecha: '2026-10-19' },
-    { id: 3, nombre: 'Politicas_Reembolso_ASA.pdf', version: 1, estado: 'PENDIENTE', chunks: 0, fecha: '2026-10-21' },
-  ]);
-
-  const [tabAdmin, setTabAdmin] = useState<
-    'CATALOGO' | 'RECINTOS' | 'MODERACION' | 'RAG' | 'EVENTOS' | 'FINANZAS' | 'DISTRIBUCION' | 'USUARIOS'
-  >('CATALOGO');
-
-  const handleModerar = (id: number, decision: 'APROBADA' | 'RECHAZADA') => {
-    setResenas((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, estado: decision } : r))
-    );
+  const tabMap: Record<string, AdminTabKey> = {
+    catalogo: 'CATALOGO',
+    eventos: 'EVENTOS',
+    recintos: 'RECINTOS',
+    distribucion: 'DISTRIBUCION',
+    finanzas: 'FINANZAS',
+    moderacion: 'MODERACION',
+    rag: 'RAG',
+    usuarios: 'USUARIOS',
   };
 
-  const handleReindexar = (id: number) => {
-    setDocumentos((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, estado: 'INDEXADO', chunks: 14 } : d))
-    );
+  const tabAdmin: AdminTabKey = (tab && tabMap[tab.toLowerCase()]) ? tabMap[tab.toLowerCase()] : 'CATALOGO';
+
+  const handleSelectTab = (newTab: AdminTabKey) => {
+    navigate(`/admin/${newTab.toLowerCase()}`);
   };
 
   return (
@@ -78,7 +54,7 @@ export const AdminPanel: React.FC = () => {
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
-            onClick={() => setTabAdmin('CATALOGO')}
+            onClick={() => handleSelectTab('CATALOGO')}
             className={`btn btn-sm ${tabAdmin === 'CATALOGO' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
@@ -86,7 +62,7 @@ export const AdminPanel: React.FC = () => {
             Categorías & Artistas
           </button>
           <button
-            onClick={() => setTabAdmin('EVENTOS')}
+            onClick={() => handleSelectTab('EVENTOS')}
             className={`btn btn-sm ${tabAdmin === 'EVENTOS' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
@@ -94,7 +70,7 @@ export const AdminPanel: React.FC = () => {
             Eventos & Entradas
           </button>
           <button
-            onClick={() => setTabAdmin('RECINTOS')}
+            onClick={() => handleSelectTab('RECINTOS')}
             className={`btn btn-sm ${tabAdmin === 'RECINTOS' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
@@ -102,7 +78,7 @@ export const AdminPanel: React.FC = () => {
             Recintos & Planos
           </button>
           <button
-            onClick={() => setTabAdmin('DISTRIBUCION')}
+            onClick={() => handleSelectTab('DISTRIBUCION')}
             className={`btn btn-sm ${tabAdmin === 'DISTRIBUCION' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
@@ -110,7 +86,7 @@ export const AdminPanel: React.FC = () => {
             Silletería Numerada
           </button>
           <button
-            onClick={() => setTabAdmin('FINANZAS')}
+            onClick={() => handleSelectTab('FINANZAS')}
             className={`btn btn-sm ${tabAdmin === 'FINANZAS' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
@@ -118,15 +94,15 @@ export const AdminPanel: React.FC = () => {
             Cuentas & Liquidación
           </button>
           <button
-            onClick={() => setTabAdmin('MODERACION')}
+            onClick={() => handleSelectTab('MODERACION')}
             className={`btn btn-sm ${tabAdmin === 'MODERACION' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
             <MessageSquare size={14} />
-            Moderación ({resenas.filter((r) => r.estado === 'PENDIENTE').length})
+            Moderación de Reseñas
           </button>
           <button
-            onClick={() => setTabAdmin('RAG')}
+            onClick={() => handleSelectTab('RAG')}
             className={`btn btn-sm ${tabAdmin === 'RAG' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
@@ -134,7 +110,7 @@ export const AdminPanel: React.FC = () => {
             Documentos RAG José
           </button>
           <button
-            onClick={() => setTabAdmin('USUARIOS')}
+            onClick={() => handleSelectTab('USUARIOS')}
             className={`btn btn-sm ${tabAdmin === 'USUARIOS' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
@@ -147,20 +123,23 @@ export const AdminPanel: React.FC = () => {
       {/* Tab: Categorías y Presentadores */}
       {tabAdmin === 'CATALOGO' && <AdminCatalog />}
 
+      {/* Tab: Eventos Activos */}
+      {tabAdmin === 'EVENTOS' && <AdminEvents />}
+
       {/* Tab: Recintos y Mapas de Localidades */}
       {tabAdmin === 'RECINTOS' && <VenueMapEditor />}
+
+      {/* Tab: Silletería y Distribución Numerada */}
+      {tabAdmin === 'DISTRIBUCION' && <AdminSeating />}
+
+      {/* Tab: Finanzas & Liquidación */}
+      {tabAdmin === 'FINANZAS' && <AdminFinance />}
 
       {/* Tab: Moderación de Reseñas */}
       {tabAdmin === 'MODERACION' && <AdminReviews />}
 
       {/* Tab: Documentos RAG */}
       {tabAdmin === 'RAG' && <AdminRag />}
-
-      {/* Tab: Finanzas Placeholder */}
-      {tabAdmin === 'FINANZAS' && <AdminFinance />}
-
-      {/* Tab: Silletería y Distribución Numerada */}
-      {tabAdmin === 'DISTRIBUCION' && <AdminSeating />}
 
       {/* Tab: Usuarios y Roles */}
       {tabAdmin === 'USUARIOS' && <AdminUsers />}

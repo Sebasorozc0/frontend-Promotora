@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { RolUsuario } from '../types/api';
 import { 
@@ -13,8 +14,8 @@ import {
 } from 'lucide-react';
 
 interface NavbarProps {
-  currentTab: string;
-  setCurrentTab: (tab: string) => void;
+  currentTab?: string;
+  setCurrentTab?: (tab: string) => void;
   onOpenJose: () => void;
   onOpenScanner: () => void;
   onOpenAuth: () => void;
@@ -22,14 +23,22 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  currentTab,
-  setCurrentTab,
   onOpenJose,
   onOpenScanner,
   onOpenAuth,
   onOpenProfile,
 }) => {
   const { user, isAuthenticated, logout, setSimulatedRole } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const isCatalogoActive =
+    location.pathname === '/' ||
+    location.pathname.startsWith('/catalogo') ||
+    location.pathname.startsWith('/eventos');
+  const isBoletosActive = location.pathname.startsWith('/boletos');
+  const isComprasActive = location.pathname.startsWith('/compras');
+  const isAdminActive = location.pathname.startsWith('/admin');
 
   return (
     <header style={{ 
@@ -49,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '76px' }}>
         {/* Brand Logo - Brutalist Editorial Typography */}
         <div 
-          onClick={() => setCurrentTab('catalogo')} 
+          onClick={() => navigate('/catalogo')} 
           style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
         >
           <div style={{
@@ -90,24 +99,24 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Navigation links */}
         <nav style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => setCurrentTab('catalogo')}
-            className={`btn btn-sm ${currentTab === 'catalogo' ? 'btn-inverse' : 'btn-outline'}`}
+            onClick={() => navigate('/catalogo')}
+            className={`btn btn-sm ${isCatalogoActive ? 'btn-inverse' : 'btn-outline'}`}
           >
             <CalendarDays size={16} />
             Catálogo
           </button>
 
           <button
-            onClick={() => setCurrentTab('boletos')}
-            className={`btn btn-sm ${currentTab === 'boletos' ? 'btn-inverse' : 'btn-outline'}`}
+            onClick={() => navigate('/boletos')}
+            className={`btn btn-sm ${isBoletosActive ? 'btn-inverse' : 'btn-outline'}`}
           >
             <Ticket size={16} />
             Mis Boletos
           </button>
 
           <button
-            onClick={() => setCurrentTab('compras')}
-            className={`btn btn-sm ${currentTab === 'compras' ? 'btn-inverse' : 'btn-outline'}`}
+            onClick={() => navigate('/compras')}
+            className={`btn btn-sm ${isComprasActive ? 'btn-inverse' : 'btn-outline'}`}
           >
             <ShoppingBag size={16} />
             Mis Compras
@@ -127,9 +136,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {(user?.rol === 'ADMINISTRADOR' || user?.rol === 'DUENO_RECINTO') && (
             <button
-              onClick={() => setCurrentTab('admin')}
-              className={`btn btn-sm ${currentTab === 'admin' ? 'btn-inverse' : 'btn-outline'}`}
-              style={{ borderColor: 'var(--accent-cobalt)', color: currentTab === 'admin' ? '#FFF' : 'var(--accent-cobalt)' }}
+              onClick={() => navigate('/admin/catalogo')}
+              className={`btn btn-sm ${isAdminActive ? 'btn-inverse' : 'btn-outline'}`}
+              style={{ borderColor: 'var(--accent-cobalt)', color: isAdminActive ? '#FFF' : 'var(--accent-cobalt)' }}
             >
               <ShieldCheck size={16} />
               Admin
