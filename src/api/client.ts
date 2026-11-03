@@ -364,6 +364,39 @@ class ApiClient {
     return this.request<RecintoPublico>(`/recintos/${id}`);
   }
 
+  public async crearRecinto(datos: {
+    nombre: string;
+    direccion?: string;
+    ciudad?: string;
+    capacidadTotal?: number;
+    imagenPlanoUrl?: string;
+    duenoId?: number;
+  }): Promise<RecintoPublico> {
+    return this.request<RecintoPublico>('/recintos', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    });
+  }
+
+  public async actualizarRecinto(id: number, datos: {
+    nombre: string;
+    direccion?: string;
+    ciudad?: string;
+    capacidadTotal?: number;
+    imagenPlanoUrl?: string;
+  }): Promise<RecintoPublico> {
+    return this.request<RecintoPublico>(`/recintos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    });
+  }
+
+  public async eliminarRecinto(id: number): Promise<void> {
+    await this.request(`/recintos/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   public async subirPlanoRecinto(recintoId: number, file: File): Promise<{ url: string }> {
     const formData = new FormData();
     formData.append('archivo', file);

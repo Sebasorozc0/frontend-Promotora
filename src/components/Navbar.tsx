@@ -9,7 +9,10 @@ import {
   ShieldCheck, 
   Sparkles, 
   User, 
-  LogOut 
+  LogOut,
+  Building2,
+  DollarSign,
+  Grid
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -32,11 +35,19 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navigate = useNavigate();
 
   const isCatalogoActive =
-    location.pathname === '/' ||
+    (location.pathname === '/' ||
     location.pathname.startsWith('/catalogo') ||
-    location.pathname.startsWith('/eventos');
+    location.pathname.startsWith('/eventos')) &&
+    !location.pathname.startsWith('/admin');
+
   const isBoletosActive = location.pathname.startsWith('/boletos');
   const isComprasActive = location.pathname.startsWith('/compras');
+
+  const isRecintosActive = location.pathname.startsWith('/admin/recintos');
+  const isEventosAdminActive = location.pathname.startsWith('/admin/eventos');
+  const isAforoActive = location.pathname.startsWith('/admin/aforo') || location.pathname.startsWith('/admin/distribucion');
+  const isFinanzasActive = location.pathname.startsWith('/admin/cuentas') || location.pathname.startsWith('/admin/finanzas');
+  const isCatalogoAdminActive = location.pathname.startsWith('/admin/catalogo');
   const isAdminActive = location.pathname.startsWith('/admin');
 
   const rol = (user?.rol || '').toUpperCase();
@@ -71,11 +82,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '76px' }}>
+      <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '76px', gap: '16px' }}>
         {/* Brand Logo - Brutalist Editorial Typography */}
         <div 
           onClick={() => navigate('/catalogo')} 
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', flexShrink: 0 }}
         >
           <div style={{
             backgroundColor: 'var(--bg-inverse)',
@@ -110,8 +121,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Navigation links */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Navigation links según Rol */}
+        <nav style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <button
             onClick={() => navigate('/catalogo')}
             className={`btn btn-sm ${isCatalogoActive ? 'btn-inverse' : 'btn-outline'}`}
@@ -120,48 +131,136 @@ export const Navbar: React.FC<NavbarProps> = ({
             Catálogo
           </button>
 
-          <button
-            onClick={() => navigate('/boletos')}
-            className={`btn btn-sm ${isBoletosActive ? 'btn-inverse' : 'btn-outline'}`}
-          >
-            <Ticket size={16} />
-            Mis Boletos
-          </button>
+          {/* Menú de Clientes (o visitantes) */}
+          {!canManage && (
+            <>
+              <button
+                onClick={() => navigate('/boletos')}
+                className={`btn btn-sm ${isBoletosActive ? 'btn-inverse' : 'btn-outline'}`}
+              >
+                <Ticket size={16} />
+                Mis Boletos
+              </button>
 
-          <button
-            onClick={() => navigate('/compras')}
-            className={`btn btn-sm ${isComprasActive ? 'btn-inverse' : 'btn-outline'}`}
-          >
-            <ShoppingBag size={16} />
-            Mis Compras
-          </button>
+              <button
+                onClick={() => navigate('/compras')}
+                className={`btn btn-sm ${isComprasActive ? 'btn-inverse' : 'btn-outline'}`}
+              >
+                <ShoppingBag size={16} />
+                Mis Compras
+              </button>
+            </>
+          )}
 
+          {/* Menú de Dueño de Recinto */}
+          {isDueno && (
+            <>
+              <button
+                onClick={() => navigate('/admin/recintos')}
+                className={`btn btn-sm ${isRecintosActive ? 'btn-inverse' : 'btn-outline'}`}
+                style={{ 
+                  borderColor: 'var(--accent-amber)', 
+                  color: isRecintosActive ? '#FFF' : 'var(--text-primary)',
+                  backgroundColor: isRecintosActive ? 'var(--bg-inverse)' : 'transparent'
+                }}
+                title="Gestión de recintos, planos arquitectónicos y trazado de localidades"
+              >
+                <Building2 size={16} color="var(--accent-amber)" />
+                Mis Recintos
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/eventos')}
+                className={`btn btn-sm ${isEventosAdminActive ? 'btn-inverse' : 'btn-outline'}`}
+                title="Eventos asignados a mis recintos y tipos de entrada"
+              >
+                <CalendarDays size={16} />
+                Mis Eventos
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/aforo')}
+                className={`btn btn-sm ${isAforoActive ? 'btn-inverse' : 'btn-outline'}`}
+                title="Gestión de silletería numerada y aforo por localidad"
+              >
+                <Grid size={16} />
+                Aforo & Zonas
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/cuentas')}
+                className={`btn btn-sm ${isFinanzasActive ? 'btn-inverse' : 'btn-outline'}`}
+                title="Cuentas financieras y liquidaciones de mis recintos"
+              >
+                <DollarSign size={16} />
+                Finanzas
+              </button>
+            </>
+          )}
+
+          {/* Menú de Administrador General */}
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => navigate('/admin/catalogo')}
+                className={`btn btn-sm ${isCatalogoAdminActive ? 'btn-inverse' : 'btn-outline'}`}
+                style={{ borderColor: 'var(--accent-cobalt)', color: isCatalogoAdminActive ? '#FFF' : 'var(--text-primary)' }}
+                title="Panel de Administración General"
+              >
+                <ShieldCheck size={16} color="var(--accent-cobalt)" />
+                Panel Admin
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/eventos')}
+                className={`btn btn-sm ${isEventosAdminActive ? 'btn-inverse' : 'btn-outline'}`}
+                title="Gestión global de eventos y entradas"
+              >
+                <CalendarDays size={16} />
+                Eventos
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/recintos')}
+                className={`btn btn-sm ${isRecintosActive ? 'btn-inverse' : 'btn-outline'}`}
+                title="Gestión de recintos y planos"
+              >
+                <Building2 size={16} />
+                Recintos
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/cuentas')}
+                className={`btn btn-sm ${isFinanzasActive ? 'btn-inverse' : 'btn-outline'}`}
+                title="Cuentas del sistema y liquidaciones"
+              >
+                <DollarSign size={16} />
+                Finanzas
+              </button>
+            </>
+          )}
+
+          {/* Botón común para administradores y dueños de recinto: Escáner QR de Ingreso */}
           {canManage && (
             <button
               onClick={onOpenScanner}
               className="btn btn-sm btn-outline"
-              style={{ borderColor: 'var(--accent-emerald)', color: 'var(--accent-emerald)' }}
+              style={{ 
+                borderColor: 'var(--accent-emerald)', 
+                color: 'var(--accent-emerald)',
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                fontWeight: 700
+              }}
               title="Escáner de Boletos para Control de Ingreso"
             >
               <QrCode size={16} />
               Validar Acceso
             </button>
           )}
-
-          {canManage && (
-            <button
-              onClick={() => navigate(isDueno ? '/admin/recintos' : '/admin/catalogo')}
-              className={`btn btn-sm ${isAdminActive ? 'btn-inverse' : 'btn-outline'}`}
-              style={{ borderColor: 'var(--accent-cobalt)', color: isAdminActive ? '#FFF' : 'var(--accent-cobalt)' }}
-            >
-              <ShieldCheck size={16} />
-              {isDueno ? 'Mi Recinto' : 'Admin'}
-            </button>
-          )}
         </nav>
 
         {/* Actions & Role Switcher */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           {/* Asistente IA Botón */}
           <button
             onClick={onOpenJose}
@@ -214,7 +313,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                       backgroundColor: 'var(--accent-amber)', 
                       color: '#000',
                       border: '1px solid var(--border-strong)',
-                      marginLeft: '2px'
+                      marginLeft: '2px',
+                      fontWeight: 800
                     }}
                   >
                     RECINTO
@@ -229,7 +329,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                       backgroundColor: 'var(--accent-scarlet)', 
                       color: '#FFF',
                       border: '1px solid var(--border-strong)',
-                      marginLeft: '2px'
+                      marginLeft: '2px',
+                      fontWeight: 800
                     }}
                   >
                     ADMIN
