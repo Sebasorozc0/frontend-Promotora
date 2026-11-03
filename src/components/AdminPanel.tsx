@@ -1,51 +1,88 @@
-import React, { useState } from 'react';
-import { MOCK_RESENAS, MOCK_EVENTOS } from '../api/client';
-import { ResenaPublica } from '../types/api';
-import { ShieldCheck, Check, X, FileText, Upload, RefreshCw, MapPin } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { 
+  Tag, 
+  Calendar, 
+  DollarSign, 
+  MessageSquare, 
+  Brain, 
+  Grid, 
+  Users, 
+  MapPin, 
+  Building2, 
+  ShieldAlert 
+} from 'lucide-react';
 import { VenueMapEditor } from './VenueMapEditor';
+import { AdminCatalog } from './admin/AdminCatalog';
+import { AdminEvents } from './admin/AdminEvents';
+import { AdminFinance } from './admin/AdminFinance';
+import { AdminReviews } from './admin/AdminReviews';
+import { AdminRag } from './admin/AdminRag';
+import { AdminSeating } from './admin/AdminSeating';
+import { AdminUsers } from './admin/AdminUsers';
+
+type AdminTabKey = 'CATALOGO' | 'RECINTOS' | 'MODERACION' | 'RAG' | 'EVENTOS' | 'FINANZAS' | 'DISTRIBUCION' | 'USUARIOS';
+
+const DUENO_ALLOWED_TABS: AdminTabKey[] = ['RECINTOS', 'DISTRIBUCION', 'FINANZAS', 'EVENTOS'];
 
 export const AdminPanel: React.FC = () => {
-  const [resenas, setResenas] = useState<ResenaPublica[]>([
-    {
-      id: 101,
-      eventoId: 1,
-      eventoTitulo: 'VIVA FEST 2026',
-      clienteNombre: 'Estuardo R.',
-      calificacion: 5,
-      comentario: 'La zona VIP y el sonido estuvieron espectaculares. Excelente seguridad en el acceso.',
-      estado: 'PENDIENTE',
-      creadoEn: new Date().toISOString(),
-    },
-    {
-      id: 102,
-      eventoId: 2,
-      eventoTitulo: 'GRAN CARRERA 10K',
-      clienteNombre: 'Lucía M.',
-      calificacion: 4,
-      comentario: 'La ruta de Reforma fue muy fluida. Buena hidratación en los kilómetros 5 y 8.',
-      estado: 'PENDIENTE',
-      creadoEn: new Date().toISOString(),
-    },
-  ]);
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const [documentos, setDocumentos] = useState([
-    { id: 1, nombre: 'Reglamento_General_Eventos_2026.pdf', version: 1, estado: 'INDEXADO', chunks: 24, fecha: '2026-10-18' },
-    { id: 2, nombre: 'Calendario_Temporada_2026.docx', version: 1, estado: 'INDEXADO', chunks: 8, fecha: '2026-10-19' },
-    { id: 3, nombre: 'Politicas_Reembolso_ASA.pdf', version: 1, estado: 'PENDIENTE', chunks: 0, fecha: '2026-10-21' },
-  ]);
+  const rol = (user?.rol || '').toUpperCase();
+  const isDueno = rol === 'DUENO_RECINTO';
+  const isAdmin = rol === 'ADMINISTRADOR';
 
-  const [tabAdmin, setTabAdmin] = useState<'RECINTOS' | 'MODERACION' | 'RAG' | 'EVENTOS'>('RECINTOS');
-
-  const handleModerar = (id: number, decision: 'APROBADA' | 'RECHAZADA') => {
-    setResenas((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, estado: decision } : r))
-    );
+  const tabMap: Record<string, AdminTabKey> = {
+    catalogo: 'CATALOGO',
+    eventos: 'EVENTOS',
+    recintos: 'RECINTOS',
+    distribucion: 'DISTRIBUCION',
+    finanzas: 'FINANZAS',
+    moderacion: 'MODERACION',
+    rag: 'RAG',
+    usuarios: 'USUARIOS',
   };
 
-  const handleReindexar = (id: number) => {
-    setDocumentos((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, estado: 'INDEXADO', chunks: 14 } : d))
+  const defaultTab: AdminTabKey = isDueno ? 'RECINTOS' : 'CATALOGO';
+  const tabAdmin: AdminTabKey = (tab && tabMap[tab.toLowerCase()]) ? tabMap[tab.toLowerCase()] : defaultTab;
+
+  // Redirigir si el dueño intenta acceder a una pestaña restringida de Superadmin
+  useEffect(() => {
+    if (isDueno && !DUENO_ALLOWED_TABS.includes(tabAdmin)) {
+      navigate('/admin/recintos', { replace: true });
+    }
+  }, [isDueno, tabAdmin, navigate]);
+
+  // Si no tiene privilegios administrativos o de recinto, denegar acceso
+  if (!isAdmin && !isDueno) {
+    return (
+      <div className="container" style={{ padding: '80px 24px', textAlign: 'center' }}>
+        <div style={{
+          maxWidth: '520px',
+          margin: '0 auto',
+          padding: '36px',
+          border: '2px solid var(--border-strong)',
+          backgroundColor: 'var(--bg-canvas)',
+          boxShadow: 'var(--shadow-crisp-md)'
+        }}>
+          <ShieldAlert size={48} style={{ color: 'var(--accent-scarlet)', margin: '0 auto 16px' }} />
+          <h2 style={{ fontSize: '1.75rem', marginBottom: '12px' }}>Acceso Restringido</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+            Este módulo requiere permisos de Administrador o Dueño de Recinto registrado.
+          </p>
+          <button onClick={() => navigate('/catalogo')} className="btn btn-inverse">
+            Volver al Catálogo
+          </button>
+        </div>
+      </div>
     );
+  }
+
+  const handleSelectTab = (newTab: AdminTabKey) => {
+    navigate(`/admin/${newTab.toLowerCase()}`);
   };
 
   return (
@@ -56,212 +93,148 @@ export const AdminPanel: React.FC = () => {
         justifyContent: 'space-between',
         borderBottom: '2px solid var(--border-strong)',
         paddingBottom: '20px',
-        marginBottom: '32px'
+        marginBottom: '32px',
+        flexWrap: 'wrap',
+        gap: '16px'
       }}>
         <div>
-          <span className="badge badge-categoria" style={{ marginBottom: '6px' }}>
-            PANEL DE ADMINISTRACIÓN Y CONTROL
+          <span 
+            className="badge" 
+            style={{ 
+              marginBottom: '6px',
+              backgroundColor: isDueno ? 'var(--accent-amber)' : 'var(--accent-cobalt)',
+              color: isDueno ? '#000' : '#FFF',
+              border: '1px solid var(--border-strong)'
+            }}
+          >
+            {isDueno ? 'DUEÑO DE RECINTO · GESTIÓN LOCAL' : 'PANEL DE ADMINISTRACIÓN GENERAL'}
           </span>
-          <h2 style={{ fontSize: '2rem' }}>Centro de Operaciones ASA</h2>
+          <h2 style={{ fontSize: '2rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {isDueno && <Building2 size={28} />}
+            {isDueno ? 'Portal de Operaciones de Recinto' : 'Centro de Operaciones ASA'}
+          </h2>
+          {isDueno && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
+              Gestión de recintos, silletería numerada, liquidaciones financieras y eventos asociados.
+            </p>
+          )}
         </div>
 
+        {/* Tab Selector */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Categorías: Solo Admin */}
+          {!isDueno && (
+            <button
+              onClick={() => handleSelectTab('CATALOGO')}
+              className={`btn btn-sm ${tabAdmin === 'CATALOGO' ? 'btn-inverse' : 'btn-outline'}`}
+              style={{ gap: '6px' }}
+            >
+              <Tag size={14} />
+              Categorías & Artistas
+            </button>
+          )}
+
+          {/* Recintos & Planos: Ambos */}
           <button
-            onClick={() => setTabAdmin('RECINTOS')}
+            onClick={() => handleSelectTab('RECINTOS')}
             className={`btn btn-sm ${tabAdmin === 'RECINTOS' ? 'btn-inverse' : 'btn-outline'}`}
             style={{ gap: '6px' }}
           >
             <MapPin size={14} />
-            Recintos y Mapas de Localidades
+            Recintos & Planos
           </button>
+
+          {/* Silletería Numerada: Ambos */}
           <button
-            onClick={() => setTabAdmin('MODERACION')}
-            className={`btn btn-sm ${tabAdmin === 'MODERACION' ? 'btn-inverse' : 'btn-outline'}`}
+            onClick={() => handleSelectTab('DISTRIBUCION')}
+            className={`btn btn-sm ${tabAdmin === 'DISTRIBUCION' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
           >
-            Moderación de Reseñas ({resenas.filter((r) => r.estado === 'PENDIENTE').length})
+            <Grid size={14} />
+            Silletería Numerada
           </button>
+
+          {/* Finanzas & Liquidación: Ambos */}
           <button
-            onClick={() => setTabAdmin('RAG')}
-            className={`btn btn-sm ${tabAdmin === 'RAG' ? 'btn-inverse' : 'btn-outline'}`}
+            onClick={() => handleSelectTab('FINANZAS')}
+            className={`btn btn-sm ${tabAdmin === 'FINANZAS' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
           >
-            Documentos RAG José
+            <DollarSign size={14} />
+            Cuentas & Liquidación
           </button>
+
+          {/* Eventos: Ambos */}
           <button
-            onClick={() => setTabAdmin('EVENTOS')}
+            onClick={() => handleSelectTab('EVENTOS')}
             className={`btn btn-sm ${tabAdmin === 'EVENTOS' ? 'btn-inverse' : 'btn-outline'}`}
+            style={{ gap: '6px' }}
           >
-            Eventos Activos
+            <Calendar size={14} />
+            Eventos & Entradas
           </button>
+
+          {/* Moderación: Solo Admin */}
+          {!isDueno && (
+            <button
+              onClick={() => handleSelectTab('MODERACION')}
+              className={`btn btn-sm ${tabAdmin === 'MODERACION' ? 'btn-inverse' : 'btn-outline'}`}
+              style={{ gap: '6px' }}
+            >
+              <MessageSquare size={14} />
+              Moderación Reseñas
+            </button>
+          )}
+
+          {/* RAG: Solo Admin */}
+          {!isDueno && (
+            <button
+              onClick={() => handleSelectTab('RAG')}
+              className={`btn btn-sm ${tabAdmin === 'RAG' ? 'btn-inverse' : 'btn-outline'}`}
+              style={{ gap: '6px' }}
+            >
+              <Brain size={14} />
+              Documentos RAG
+            </button>
+          )}
+
+          {/* Usuarios: Solo Admin */}
+          {!isDueno && (
+            <button
+              onClick={() => handleSelectTab('USUARIOS')}
+              className={`btn btn-sm ${tabAdmin === 'USUARIOS' ? 'btn-inverse' : 'btn-outline'}`}
+              style={{ gap: '6px' }}
+            >
+              <Users size={14} />
+              Usuarios & Roles
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Tab: Categorías y Presentadores */}
+      {tabAdmin === 'CATALOGO' && !isDueno && <AdminCatalog />}
 
       {/* Tab: Recintos y Mapas de Localidades */}
       {tabAdmin === 'RECINTOS' && <VenueMapEditor />}
 
-      {/* Tab: Moderación de Reseñas */}
-      {tabAdmin === 'MODERACION' && (
-        <div>
-          <div style={{ marginBottom: '20px', color: 'var(--text-secondary)' }}>
-            Regla de Negocio #9: Solo clientes con boleto <strong>USADO</strong> pueden opinar. Las reseñas nacen PENDIENTE y las modera un administrador antes de mostrarse en el catálogo.
-          </div>
+      {/* Tab: Silletería y Distribución Numerada */}
+      {tabAdmin === 'DISTRIBUCION' && <AdminSeating />}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {resenas.map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  backgroundColor: '#FFF',
-                  border: '2px solid var(--border-strong)',
-                  boxShadow: 'var(--shadow-crisp-sm)',
-                  padding: '20px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <span className="badge badge-categoria">{r.eventoTitulo}</span>
-                    <span className="badge badge-pendiente">{r.estado}</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-amber)' }}>
-                      ★ {r.calificacion}.0 / 5.0
-                    </span>
-                  </div>
-                  <h4 style={{ fontSize: '1.05rem', marginBottom: '4px' }}>
-                    Cliente: {r.clienteNombre}
-                  </h4>
-                  <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)' }}>
-                    "{r.comentario}"
-                  </p>
-                </div>
-
-                {r.estado === 'PENDIENTE' ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => handleModerar(r.id, 'APROBADA')}
-                      className="btn btn-sm btn-primary"
-                      style={{ backgroundColor: 'var(--accent-emerald)', borderColor: 'var(--border-strong)' }}
-                    >
-                      <Check size={16} /> Aprobar
-                    </button>
-                    <button
-                      onClick={() => handleModerar(r.id, 'RECHAZADA')}
-                      className="btn btn-sm btn-outline"
-                      style={{ color: 'var(--accent-vermilion)' }}
-                    >
-                      <X size={16} /> Rechazar
-                    </button>
-                  </div>
-                ) : (
-                  <span className={`badge ${r.estado === 'APROBADA' ? 'badge-valido' : 'badge-anulado'}`}>
-                    {r.estado}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tab: Documentos RAG */}
-      {tabAdmin === 'RAG' && (
-        <div>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '20px'
-          }}>
-            <div>
-              <p style={{ color: 'var(--text-secondary)' }}>
-                Regla F9: Carga pública para RAG. La indexación es explícita por POST /ia/documentos/{'{id}'}/reindexar (aprobada por administrador).
-              </p>
-            </div>
-            <button className="btn btn-sm btn-primary">
-              <Upload size={16} /> Cargar Nuevo Documento
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {documentos.map((d) => (
-              <div
-                key={d.id}
-                style={{
-                  backgroundColor: '#FFF',
-                  border: '2px solid var(--border-strong)',
-                  boxShadow: 'var(--shadow-crisp-sm)',
-                  padding: '16px 20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <FileText size={28} color="var(--accent-cobalt)" />
-                  <div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.05rem' }}>
-                      {d.nombre}
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      Versión: v{d.version} · Fecha: {d.fecha} · Chunks vectorizados: {d.chunks}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span className={`badge ${d.estado === 'INDEXADO' ? 'badge-valido' : 'badge-pendiente'}`}>
-                    {d.estado}
-                  </span>
-                  {d.estado === 'PENDIENTE' && (
-                    <button
-                      onClick={() => handleReindexar(d.id)}
-                      className="btn btn-sm btn-inverse"
-                    >
-                      <RefreshCw size={14} /> Indexar Vectores
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Tab: Finanzas & Liquidación */}
+      {tabAdmin === 'FINANZAS' && <AdminFinance />}
 
       {/* Tab: Eventos Activos */}
-      {tabAdmin === 'EVENTOS' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-          {MOCK_EVENTOS.map((ev) => (
-            <div
-              key={ev.id}
-              style={{
-                backgroundColor: '#FFF',
-                border: '2px solid var(--border-strong)',
-                boxShadow: 'var(--shadow-crisp-sm)',
-                padding: '18px'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span className="badge badge-categoria">{ev.categoriaNombre}</span>
-                <span className="badge badge-valido">{ev.estado}</span>
-              </div>
-              <h4 style={{ fontSize: '1.15rem', marginBottom: '8px' }}>{ev.titulo}</h4>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                Recinto: {ev.recintoNombre} <br />
-                Cupo libre: {ev.cupoDisponible} / {ev.cupoTotal}
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-sm btn-outline" style={{ width: '100%' }}>
-                  Editar Fechas
-                </button>
-                <button className="btn btn-sm btn-inverse" style={{ width: '100%' }}>
-                  Ver Tipos Entrada
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {tabAdmin === 'EVENTOS' && <AdminEvents />}
 
+      {/* Tab: Moderación de Reseñas */}
+      {tabAdmin === 'MODERACION' && !isDueno && <AdminReviews />}
+
+      {/* Tab: Documentos RAG */}
+      {tabAdmin === 'RAG' && !isDueno && <AdminRag />}
+
+      {/* Tab: Usuarios y Roles */}
+      {tabAdmin === 'USUARIOS' && !isDueno && <AdminUsers />}
     </div>
   );
 };

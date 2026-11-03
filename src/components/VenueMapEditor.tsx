@@ -15,7 +15,10 @@ import {
   Maximize2,
   CheckCircle2,
   AlertTriangle,
-  Copy
+  Copy,
+  Plus,
+  Building2,
+  Loader2
 } from 'lucide-react';
 
 const COLOR_PALETTE = [
@@ -29,12 +32,20 @@ const COLOR_PALETTE = [
 ];
 
 export const VenueMapEditor: React.FC = () => {
-  const [recintos, setRecintos] = useState<RecintoPublico[]>(MOCK_RECINTOS);
-  const [selectedRecintoId, setSelectedRecintoId] = useState<number>(MOCK_RECINTOS[0].id);
+  const [recintos, setRecintos] = useState<RecintoPublico[]>([]);
+  const [selectedRecintoId, setSelectedRecintoId] = useState<number>(0);
   const [localidades, setLocalidades] = useState<LocalidadMapa[]>([]);
   const [imagenPlano, setImagenPlano] = useState<string>('/venue_blueprint.jpg');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Modal para crear nuevo recinto
+  const [isCrearRecintoModalOpen, setIsCrearRecintoModalOpen] = useState<boolean>(false);
+  const [nuevoRecintoNombre, setNuevoRecintoNombre] = useState<string>('');
+  const [nuevoRecintoCiudad, setNuevoRecintoCiudad] = useState<string>('Ciudad de Guatemala');
+  const [nuevoRecintoDireccion, setNuevoRecintoDireccion] = useState<string>('');
+  const [nuevoRecintoCapacidad, setNuevoRecintoCapacidad] = useState<number>(15000);
+  const [isGuardandoRecinto, setIsGuardandoRecinto] = useState<boolean>(false);
 
   // Estados del Modo Dibujo de Vectores
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
@@ -53,19 +64,46 @@ export const VenueMapEditor: React.FC = () => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Cargar recintos reales del usuario autenticado
+  const cargarRecintos = async () => {
+    try {
+      const res = await api.getRecintos();
+      const lista: RecintoPublico[] = Array.isArray(res) ? res : (res as any)?.items || [];
+      if (lista.length > 0) {
+        setRecintos(lista);
+        setSelectedRecintoId((prev) => {
+          if (prev && lista.some((r) => r.id === prev)) return prev;
+          return lista[0].id;
+        });
+      } else {
+        setRecintos([]);
+        setSelectedRecintoId(0);
+      }
+    } catch (err) {
+      console.warn('[VenueMapEditor] Error cargando recintos:', err);
+    }
+  };
+
+  useEffect(() => {
+    cargarRecintos();
+  }, []);
+
   // Cargar mapa del recinto seleccionado
   useEffect(() => {
-    cargarMapaRecinto(selectedRecintoId);
+    if (selectedRecintoId > 0) {
+      cargarMapaRecinto(selectedRecintoId);
+    } else {
+      setLocalidades([]);
+    }
   }, [selectedRecintoId]);
 
   const cargarMapaRecinto = async (recintoId: number) => {
+    if (!recintoId) return;
     setIsLoading(true);
     try {
       const mapa = await api.getMapaRecinto(recintoId);
       setLocalidades(mapa.localidades || []);
-      if (mapa.imagenPlanoUrl) {
-        setImagenPlano(mapa.imagenPlanoUrl);
-      }
+      setImagenPlano(mapa.imagenPlanoUrl || '/venue_blueprint.jpg');
     } catch (err) {
       console.warn('Error cargando mapa, usando fallback.', err);
     } finally {
@@ -73,9 +111,47 @@ export const VenueMapEditor: React.FC = () => {
     }
   };
 
-  const recintoActual = recintos.find((r) => r.id === selectedRecintoId) || recintos[0];
+  const handleCrearRecinto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevoRecintoNombre.trim()) {
+      alert('Por favor ingresa el nombre del recinto.');
+      return;
+    }
+    setIsGuardandoRecinto(true);
+    try {
+      const creado = await api.crearRecinto({
+        nombre: nuevoRecintoNombre.trim(),
+        ciudad: nuevoRecintoCiudad.trim() || undefined,
+        direccion: nuevoRecintoDireccion.trim() || undefined,
+        capacidadTotal: Number(nuevoRecintoCapacidad) || 15000,
+      });
+      mostrarFeedback(`¡Recinto "${creado.nombre}" registrado con éxito!`, 'success');
+      setIsCrearRecintoModalOpen(false);
+      setNuevoRecintoNombre('');
+      setNuevoRecintoDireccion('');
+      await cargarRecintos();
+      if (creado.id) {
+        setSelectedRecintoId(creado.id);
+      }
+    } catch (err: any) {
+      console.error('[VenueMapEditor] Error al crear recinto:', err);
+      const msg = err?.detail || err?.title || 'No se pudo crear el recinto.';
+      alert(`Error al registrar el recinto:\n${msg}`);
+    } finally {
+      setIsGuardandoRecinto(false);
+    }
+  };
+
+  const recintoActual: RecintoPublico = recintos.find((r) => r.id === selectedRecintoId) || recintos[0] || {
+    id: 0,
+    duenoId: 0,
+    nombre: 'Sin recintos registrados',
+    ciudad: '',
+    capacidadTotal: 0,
+    activo: true,
+  };
   const capacidadAsignada = localidades.reduce((acc, l) => acc + (l.capacidad || 0), 0);
-  const capacidadExcedida = recintoActual.capacidadTotal ? capacidadAsignada > recintoActual.capacidadTotal : false;
+  const capacidadExcedida = (recintoActual.capacidadTotal || 0) > 0 ? capacidadAsignada > (recintoActual.capacidadTotal || 0) : false;
 
   // Manejo de coordenadas del cursor en el sistema SVG (1000 x 562)
   const getSvgCoordinates = (e: React.MouseEvent<SVGSVGElement>): [number, number] => {
@@ -320,29 +396,46 @@ export const VenueMapEditor: React.FC = () => {
         gap: '20px'
       }}>
         {/* Selector de Recinto */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
               RECINTO EN EDICIÓN
             </div>
-            <select
-              value={selectedRecintoId}
-              onChange={(e) => setSelectedRecintoId(Number(e.target.value))}
-              className="input"
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontWeight: 700,
-                fontSize: '1rem',
-                minWidth: '280px',
-                padding: '8px 12px'
-              }}
-            >
-              {recintos.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nombre} ({r.ciudad})
-                </option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <select
+                value={selectedRecintoId}
+                onChange={(e) => setSelectedRecintoId(Number(e.target.value))}
+                className="input"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  minWidth: '260px',
+                  padding: '8px 12px'
+                }}
+              >
+                {recintos.length === 0 ? (
+                  <option value={0}>Sin recintos registrados</option>
+                ) : (
+                  recintos.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nombre} ({r.ciudad || 'Guatemala'})
+                    </option>
+                  ))
+                )}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setIsCrearRecintoModalOpen(true)}
+                className="btn btn-outline"
+                style={{ gap: '6px', whiteSpace: 'nowrap' }}
+                title="Registrar un nuevo recinto"
+              >
+                <Plus size={16} />
+                Nuevo Recinto
+              </button>
+            </div>
           </div>
 
           <div style={{ borderLeft: '2px solid var(--border-subtle)', paddingLeft: '16px' }}>
@@ -963,6 +1056,106 @@ export const VenueMapEditor: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal: Registrar Nuevo Recinto */}
+      {isCrearRecintoModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsCrearRecintoModalOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '2px solid var(--border-strong)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: 'var(--bg-canvas)'
+            }}>
+              <div>
+                <span className="badge badge-categoria" style={{ marginBottom: '4px' }}>
+                  INFRAESTRUCTURA & RECINTOS
+                </span>
+                <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Registrar Nuevo Recinto</h3>
+              </div>
+              <button 
+                onClick={() => setIsCrearRecintoModalOpen(false)} 
+                className="btn btn-sm btn-outline"
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCrearRecinto} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label className="form-label">Nombre del Recinto *</label>
+                <input
+                  type="text"
+                  required
+                  className="input"
+                  placeholder="Ej. Explanada Cardales de Cayalá"
+                  value={nuevoRecintoNombre}
+                  onChange={(e) => setNuevoRecintoNombre(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label className="form-label">Ciudad *</label>
+                  <input
+                    type="text"
+                    required
+                    className="input"
+                    placeholder="Guatemala"
+                    value={nuevoRecintoCiudad}
+                    onChange={(e) => setNuevoRecintoCiudad(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Capacidad Total *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    className="input"
+                    placeholder="15000"
+                    value={nuevoRecintoCapacidad}
+                    onChange={(e) => setNuevoRecintoCapacidad(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label">Dirección</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Ej. Boulevard Rafael Landívar 10-05, Zona 16"
+                  value={nuevoRecintoDireccion}
+                  onChange={(e) => setNuevoRecintoDireccion(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '12px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsCrearRecintoModalOpen(false)}
+                  className="btn btn-outline"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isGuardandoRecinto}
+                  className="btn btn-primary"
+                  style={{ gap: '6px' }}
+                >
+                  {isGuardandoRecinto ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={16} />}
+                  Crear Recinto
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

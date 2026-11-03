@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { X, Lock, Mail, User, Phone, FileText, AlertCircle, Loader2 } from 'lucide-react';
 
@@ -22,6 +22,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [cargando, setCargando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Formatear/limpiar todos los valores del formulario al cerrar o abrir el modal
+  const resetFormulario = () => {
+    setEmail('');
+    setPassword('');
+    setNombre('');
+    setApellido('');
+    setTelefono('');
+    setDpi('');
+    setErrorMsg(null);
+    setEsRegistro(false);
+    setCargando(false);
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetFormulario();
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    resetFormulario();
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,7 +59,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       } else {
         await login(email, password);
       }
-      onClose();
+      handleClose();
     } catch (err: any) {
       setErrorMsg(err.detail || err.title || 'Error al autenticar. Verifica tus credenciales.');
     } finally {
@@ -51,13 +75,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setEmail('dueno.cayala@promotora.gt');
       setPassword('DuenoCayala2026!');
     } else {
-      setEmail('carlos.mendoza@ejemplo.com');
-      setPassword('ClientePass2026!');
+      setEmail('testuser@example.com');
+      setPassword('TestPassword2026!');
     }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
       <div 
         className="modal-content"
         style={{ maxWidth: '480px' }}
@@ -80,7 +104,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               {esRegistro ? 'Crear Cuenta de Cliente' : 'Iniciar Sesión'}
             </h2>
           </div>
-          <button onClick={onClose} className="btn btn-sm btn-outline" style={{ padding: '6px 10px' }}>
+          <button onClick={handleClose} className="btn btn-sm btn-outline" style={{ padding: '6px 10px' }}>
             <X size={18} />
           </button>
         </div>
@@ -187,6 +211,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <input
               type="password"
               required
+              minLength={8}
               className="input-brutal"
               placeholder="••••••••••••"
               value={password}

@@ -59,7 +59,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
       <div 
         className="modal-content"
         style={{ maxWidth: '580px' }}

@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Lock, ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react';
+import { Lock, ShieldAlert, Loader2, CheckCircle2, X } from 'lucide-react';
 
-export const PasswordChangeModal: React.FC = () => {
+interface PasswordChangeModalProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen, onClose }) => {
   const { debeCambiarPassword, cambiarPassword, logout } = useAuth();
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
   const [confirmacion, setConfirmacion] = useState('');
   const [cargando, setCargando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [exitoMsg, setExitoMsg] = useState<string | null>(null);
 
-  if (!debeCambiarPassword) return null;
+  const esVisible = isOpen !== undefined ? isOpen : debeCambiarPassword;
+  if (!esVisible) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,110 +32,187 @@ export const PasswordChangeModal: React.FC = () => {
 
     setCargando(true);
     setErrorMsg(null);
+    setExitoMsg(null);
 
     try {
       await cambiarPassword(actual, nueva);
+      setExitoMsg('Contraseña actualizada exitosamente.');
+      setTimeout(() => {
+        if (onClose) onClose();
+      }, 1500);
     } catch (err: any) {
-      setErrorMsg(err.detail || 'Error al actualizar la contraseña obligatoria.');
+      setErrorMsg(err.detail || 'Error al actualizar la contraseña.');
     } finally {
       setCargando(false);
     }
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '440px' }}>
+    <div
+      className="modal-overlay"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(18, 19, 22, 0.72)',
+        backdropFilter: 'blur(3px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1050,
+        padding: '16px',
+      }}
+    >
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
         <div style={{
           padding: '20px 24px',
           borderBottom: '2px solid var(--border-strong)',
           backgroundColor: 'var(--accent-amber-soft)',
           display: 'flex',
           alignItems: 'center',
-          gap: '10px'
+          justifyContent: 'space-between',
         }}>
-          <ShieldAlert size={22} color="var(--accent-amber)" />
-          <div>
-            <h3 style={{ fontSize: '1.2rem', color: 'var(--accent-amber)' }}>Cambio de Contraseña Obligatorio</h3>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
-              Requisito de seguridad en el primer acceso
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ShieldAlert size={22} color="var(--accent-amber)" />
+            <div>
+              <h3 style={{ fontSize: '1.15rem' }}>
+                {debeCambiarPassword ? 'Cambio Obligatorio de Contraseña' : 'Cambiar Contraseña'}
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                {debeCambiarPassword ? 'Primer inicio de sesión detectado' : 'Seguridad de la cuenta'}
+              </p>
             </div>
           </div>
+          {onClose && !debeCambiarPassword && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn btn-sm btn-outline"
+              style={{ padding: '4px 8px' }}
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Por políticas de protección criptográfica del sistema, debes actualizar tu contraseña antes de continuar operando.
-          </p>
-
           {errorMsg && (
             <div style={{
               backgroundColor: 'var(--accent-vermilion-soft)',
               color: 'var(--accent-vermilion)',
-              border: '1.5px solid var(--accent-vermilion)',
-              padding: '10px',
-              fontSize: '0.85rem',
-              marginBottom: '14px'
+              border: '1px solid var(--accent-vermilion)',
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-xs)',
+              marginBottom: '16px',
+              fontSize: '0.85rem'
             }}>
               {errorMsg}
             </div>
           )}
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
-              Contraseña Temporal Actual *
+          {exitoMsg && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              backgroundColor: 'var(--accent-emerald-soft)',
+              color: 'var(--accent-emerald)',
+              border: '1px solid var(--accent-emerald)',
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-xs)',
+              marginBottom: '16px',
+              fontSize: '0.85rem'
+            }}>
+              <CheckCircle2 size={16} />
+              {exitoMsg}
+            </div>
+          )}
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'var(--font-mono)', marginBottom: '6px' }}>
+              CONTRASEÑA ACTUAL
             </label>
-            <input
-              type="password"
-              required
-              className="input-brutal"
-              value={actual}
-              onChange={(e) => setActual(e.target.value)}
-            />
+            <div style={{ position: 'relative' }}>
+              <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+              <input
+                type="password"
+                required
+                value={actual}
+                onChange={(e) => setActual(e.target.value)}
+                className="input"
+                style={{ paddingLeft: '38px', width: '100%' }}
+              />
+            </div>
           </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
-              Nueva Contraseña Segura *
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'var(--font-mono)', marginBottom: '6px' }}>
+              NUEVA CONTRASEÑA
             </label>
-            <input
-              type="password"
-              required
-              className="input-brutal"
-              placeholder="Mínimo 8 caracteres"
-              value={nueva}
-              onChange={(e) => setNueva(e.target.value)}
-            />
+            <div style={{ position: 'relative' }}>
+              <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+              <input
+                type="password"
+                required minLength={8}
+                value={nueva}
+                onChange={(e) => setNueva(e.target.value)}
+                className="input"
+                style={{ paddingLeft: '38px', width: '100%' }}
+              />
+            </div>
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
-              Confirmar Nueva Contraseña *
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'var(--font-mono)', marginBottom: '6px' }}>
+              CONFIRMAR NUEVA CONTRASEÑA
             </label>
-            <input
-              type="password"
-              required
-              className="input-brutal"
-              value={confirmacion}
-              onChange={(e) => setConfirmacion(e.target.value)}
-            />
+            <div style={{ position: 'relative' }}>
+              <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+              <input
+                type="password"
+                required minLength={8}
+                value={confirmacion}
+                onChange={(e) => setConfirmacion(e.target.value)}
+                className="input"
+                style={{ paddingLeft: '38px', width: '100%' }}
+              />
+            </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              type="button"
-              onClick={logout}
-              className="btn btn-outline"
-              style={{ flex: 1 }}
-            >
-              Cerrar Sesión
-            </button>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            {debeCambiarPassword ? (
+              <button
+                type="button"
+                onClick={logout}
+                className="btn btn-outline"
+                style={{ width: '45%' }}
+              >
+                Cerrar Sesión
+              </button>
+            ) : onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn btn-outline"
+              >
+                Cancelar
+              </button>
+            )}
+
             <button
               type="submit"
               disabled={cargando}
               className="btn btn-primary"
-              style={{ flex: 2 }}
+              style={{ flex: 1 }}
             >
-              {cargando ? <Loader2 size={18} className="spin" /> : 'Actualizar y Entrar'}
+              {cargando ? (
+                <>
+                  <Loader2 size={16} className="spin" />
+                  Actualizando...
+                </>
+              ) : (
+                'Establecer Contraseña'
+              )}
             </button>
           </div>
         </form>

@@ -18,48 +18,130 @@ interface AuthContextType {
   }) => Promise<void>;
   logout: () => Promise<void>;
   cambiarPassword: (actual: string, nueva: string) => Promise<void>;
-  setSimulatedRole: (rol: RolUsuario) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function parseJwtRole(token: string): RolUsuario {
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return 'CLIENTE';
+    let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const parsed = JSON.parse(jsonPayload);
+    const rawRole = (
+      parsed.role ||
+      parsed.rol ||
+      parsed['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
+      ''
+    ).toString().toUpperCase().trim();
+
+    if (rawRole === 'ADMINISTRADOR' || rawRole === 'DUENO_RECINTO' || rawRole === 'CLIENTE') {
+      return rawRole as RolUsuario;
+    }
+    return 'CLIENTE';
+  } catch (err) {
+    console.warn('[AuthContext] Error decodificando JWT:', err);
+    return 'CLIENTE';
+  }
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UsuarioSesion | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Restaurar sesión de localStorage si existe
+    // Restaurar sesión de localStorage únicamente si existe token Y usuario válido
     const token = api.getAccessToken();
     const storedUser = localStorage.getItem('promotora_user');
-    if (token && storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        // Fallback
+
+    if (!token || !storedUser) {
+      setUser(null);
+      localStorage.removeItem('promotora_user');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const parsed: UsuarioSesion = JSON.parse(storedUser);
+      if (parsed && parsed.email) {
+        const roleFromJwt = parseJwtRole(token);
+        if (roleFromJwt) {
+          parsed.rol = roleFromJwt;
+        }
+        setUser(parsed);
+        localStorage.setItem('promotora_user', JSON.stringify(parsed));
+
+        // Sincronizar y actualizar con datos de perfil reales en background
+        if (parsed.id) {
+          api.getPerfil(parsed.id).then((perfil) => {
+            if (perfil?.usuario) {
+              const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
+              const rolVerificado = (perfil.usuario.rol as RolUsuario) || parsed.rol;
+              const sincronizado: UsuarioSesion = {
+                ...parsed,
+                nombre: nombreCompleto || parsed.nombre,
+                rol: rolVerificado,
+              };
+              setUser(sincronizado);
+              localStorage.setItem('promotora_user', JSON.stringify(sincronizado));
+            }
+          }).catch(() => {});
+        }
+      } else {
+        setUser(null);
+        localStorage.removeItem('promotora_user');
       }
-    } else {
-      // Sesión de demostración inicial por defecto (CLIENTE)
-      const demoUser: UsuarioSesion = {
-        id: 7,
-        nombre: 'Carlos Mendoza',
-        email: 'carlos.mendoza@ejemplo.com',
-        rol: 'CLIENTE',
-        debeCambiarPassword: false,
-      };
-      setUser(demoUser);
+    } catch {
+      setUser(null);
+      localStorage.removeItem('promotora_user');
     }
     setIsLoading(false);
+
+    // Escuchar expiración total de sesión para limpiar UI
+    const handleExpired = () => {
+      setUser(null);
+      localStorage.removeItem('promotora_user');
+    };
+    window.addEventListener('promotora:session-expired', handleExpired);
+    return () => {
+      window.removeEventListener('promotora:session-expired', handleExpired);
+    };
   }, []);
 
   const login = async (email: string, pass: string) => {
     setIsLoading(true);
     try {
       const res = await api.login(email, pass);
+      const rolFromToken = parseJwtRole(res.accessToken);
+
+      let nombreUsuario = email.split('@')[0];
+      let rolUsuario = rolFromToken;
+
+      try {
+        const perfil = await api.getPerfil(res.usuarioId);
+        if (perfil && perfil.usuario) {
+          const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
+          if (nombreCompleto) nombreUsuario = nombreCompleto;
+          if (perfil.usuario.rol) rolUsuario = perfil.usuario.rol as RolUsuario;
+        }
+      } catch {
+        // En caso de fallo de red en perfil, conservamos rol decodificado del JWT
+      }
+
       const sesion: UsuarioSesion = {
         id: res.usuarioId,
-        nombre: res.nombre || email.split('@')[0],
-        email: res.email || email,
-        rol: res.rol,
+        nombre: nombreUsuario,
+        email: email,
+        rol: rolUsuario,
         debeCambiarPassword: res.debeCambiarPassword,
       };
       setUser(sesion);
@@ -93,17 +175,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('promotora_user', JSON.stringify(updated));
   };
 
-  const setSimulatedRole = (rol: RolUsuario) => {
-    if (!user) return;
-    const updated: UsuarioSesion = {
-      ...user,
-      rol,
-      nombre: rol === 'ADMINISTRADOR' ? 'Admin Promotora' : rol === 'DUENO_RECINTO' ? 'Dueño Cayalá' : 'Carlos Mendoza',
-    };
-    setUser(updated);
-    localStorage.setItem('promotora_user', JSON.stringify(updated));
-  };
-
   return (
     <AuthContext.Provider
       value={{
@@ -115,7 +186,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registro,
         logout,
         cambiarPassword,
-        setSimulatedRole,
       }}
     >
       {children}

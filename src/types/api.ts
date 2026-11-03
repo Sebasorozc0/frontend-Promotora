@@ -230,3 +230,160 @@ export interface PaginatedResult<T> {
   total: number;
   totalPaginas: number;
 }
+
+// --- Nuevos tipos de Administración y Endpoints de la API ---
+
+export interface UsuarioDto {
+  id: number;
+  email: string;
+  nombre: string;
+  apellido: string;
+  rol: RolUsuario;
+  estado: 'ACTIVO' | 'INACTIVO';
+  debeCambiarPassword: boolean;
+}
+
+export interface PerfilDto {
+  fechaNacimiento?: string | null;
+  telefono?: string | null;
+  empresa?: string | null;
+  nit?: string | null;
+}
+
+export interface UsuarioDetalleDto {
+  usuario: UsuarioDto;
+  perfil: PerfilDto;
+}
+
+export interface UsuariosPaginaDto {
+  items: UsuarioDetalleDto[];
+  pagina: number;
+  tamanoPagina: number;
+  total: number;
+  totalPaginas: number;
+}
+
+export interface ActualizarUsuarioRequest {
+  email: string;
+  nombre: string;
+  apellido: string;
+  fechaNacimiento?: string | null;
+  telefono?: string | null;
+  empresa?: string | null;
+  nit?: string | null;
+}
+
+export interface AltaAdministradorRequest {
+  email: string;
+  password?: string;
+  nombre: string;
+  apellido: string;
+}
+
+export interface AltaDuenoRequest {
+  email: string;
+  password?: string;
+  nombre: string;
+  apellido: string;
+  empresa: string;
+  nit?: string;
+}
+
+// Categorías y Presentadores
+export interface CategoriaDetalleDto {
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  activo: boolean;
+}
+
+export interface PresentadorDetalleDto {
+  id: number;
+  nombreArtistico: string;
+  biografia?: string | null;
+  fotoUrl?: string | null;
+  promedioCalificacion?: number | null;
+  totalResenas?: number;
+  activo: boolean;
+}
+
+export interface EventoPresentadorItemDto {
+  presentadorId: number;
+  nombreArtistico: string;
+  biografia?: string | null;
+  fotoUrl?: string | null;
+  orden: number;
+  rol?: string | null;
+}
+
+// Finanzas y Contabilidad
+export type TipoCuenta = 'PLATAFORMA' | 'DUENO' | 'IMPUESTOS';
+export type EstadoCuenta = 'ACTIVA' | 'CERRADA';
+export type TipoMovimiento = 'VENTA' | 'COMISION' | 'IMPUESTO' | 'LIQUIDACION' | 'REEMBOLSO';
+
+export interface CuentaFinancieraDto {
+  id: number;
+  tipo: TipoCuenta;
+  duenoId?: number | null;
+  duenoNombre?: string | null;
+  empresa?: string | null;
+  moneda: string;
+  saldo: number;
+  estado: EstadoCuenta;
+  fechaCreacion: string;
+  fechaCierre?: string | null;
+}
+
+export interface MovimientoFinancieroDto {
+  id: number;
+  cuentaId: number;
+  tipo: TipoMovimiento;
+  monto: number;
+  saldoPosterior: number;
+  descripcion: string;
+  referencia?: string | null;
+  fechaCreacion: string;
+}
+
+// Documentos RAG
+export type EstadoDocumentoRag = 'PENDIENTE' | 'INDEXADO' | 'ERROR' | 'DESACTIVADO';
+
+export interface DocumentoRagDto {
+  id: number;
+  serie: string;
+  nombreArchivo: string;
+  version: number;
+  estado: EstadoDocumentoRag;
+  chunks: number;
+  fechaCreacion: string;
+  activo: boolean;
+}
+
+// Distribución de Asientos Numerados
+export interface MesaDto {
+  id: number;
+  numero: number;
+  capacidad: number;
+  x: number;
+  y: number;
+  radio: number;
+  bloqueada?: boolean;
+}
+
+export interface SillaDto {
+  id: number;
+  mesaId?: number | null;
+  numero: number;
+  fila?: string | null;
+  x: number;
+  y: number;
+  estado: 'DISPONIBLE' | 'RESERVADO' | 'VENDIDO' | 'BLOQUEADO';
+}
+
+export interface DistribucionDto {
+  eventoId: number;
+  localidadId: number;
+  publicado: boolean;
+  mesas: MesaDto[];
+  sillas: SillaDto[];
+}
