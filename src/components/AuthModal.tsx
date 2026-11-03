@@ -75,8 +75,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setEmail('dueno.cayala@promotora.gt');
       setPassword('DuenoCayala2026!');
     } else {
-      setEmail('carlos.mendoza@ejemplo.com');
-      setPassword('ClientePass2026!');
+      setEmail('testuser@example.com');
+      setPassword('TestPassword2026!');
     }
   };
 
