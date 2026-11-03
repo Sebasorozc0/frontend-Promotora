@@ -39,6 +39,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
         '¡Hola! Soy José, el asistente oficial de la promotora. Puedo responder tus consultas sobre eventos en venta, reglamentos de acceso, recintos, horarios y políticas públicas con respaldo en documentos oficiales.',
     },
   ]);
+  const [sessionId] = useState<string>(() => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'c3b9b4a1-8d2a-4f51-b8ef-1f19c902d131'));
   const [input, setInput] = useState('');
   const [cargando, setCargando] = useState(false);
   const [fuentesAbiertas, setFuentesAbiertas] = useState<Record<string, boolean>>({});
@@ -61,7 +62,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
     setCargando(true);
 
     try {
-      const res = await api.consultarIa(consulta);
+      const res = await api.consultarIa(consulta, sessionId);
       const idJose = 'jose-' + Date.now();
       const nuevoMensajeJose: MensajeChat = {
         id: idJose,
@@ -77,7 +78,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
         {
           id: 'err-' + Date.now(),
           remitente: 'jose',
-          texto: 'Lo siento, no pude conectar con el servicio de IA en este momento. Por favor intenta de nuevo.',
+          texto: err?.detail || err?.message || 'Lo siento, no pude conectar con el servicio de IA en este momento. Por favor intenta de nuevo.',
         },
       ]);
     } finally {
