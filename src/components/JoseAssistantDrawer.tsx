@@ -97,7 +97,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
   ];
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ padding: 0 }}>
+    <div className="modal-overlay" onClick={(e) => e.stopPropagation()} style={{ padding: 0 }}>
       <div 
         className="drawer-aside"
         onClick={(e) => e.stopPropagation()}

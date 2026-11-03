@@ -779,7 +779,7 @@ function AppContent() {
 
       {/* Modal para Crear Reseña con Boleto USADO */}
       {boletoParaResena && (
-        <div className="modal-overlay" onClick={() => setBoletoParaResena(null)}>
+        <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
           <div className="modal-content" style={{ maxWidth: '460px' }} onClick={(e) => e.stopPropagation()}>
             <div style={{
               padding: '20px 24px',
@@ -840,9 +840,19 @@ function AppContent() {
                 />
               </div>
 
-              <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-                Enviar Reseña para Moderación
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setBoletoParaResena(null)}
+                  className="btn btn-outline"
+                  style={{ flex: 1 }}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>
+                  Enviar Reseña para Moderación
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -859,3 +869,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+

@@ -187,6 +187,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <input
               type="password"
               required
+              minLength={8}
               className="input-brutal"
               placeholder="••••••••••••"
               value={password}

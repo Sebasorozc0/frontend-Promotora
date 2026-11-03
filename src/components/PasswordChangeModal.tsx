@@ -153,7 +153,7 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
               <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
               <input
                 type="password"
-                required
+                required minLength={8}
                 value={nueva}
                 onChange={(e) => setNueva(e.target.value)}
                 className="input"
@@ -170,7 +170,7 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
               <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
               <input
                 type="password"
-                required
+                required minLength={8}
                 value={confirmacion}
                 onChange={(e) => setConfirmacion(e.target.value)}
                 className="input"
