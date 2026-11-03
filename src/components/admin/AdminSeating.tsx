@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api, MOCK_EVENTOS } from '../../api/client';
 import { EventoCatalogo, LocalidadMapa, DistribucionDto, MesaDto, SillaDto } from '../../types/api';
 import { Modal } from '../common/Modal';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Grid, 
   Plus, 
@@ -18,6 +19,8 @@ import {
 } from 'lucide-react';
 
 export const AdminSeating: React.FC = () => {
+  const { user } = useAuth();
+  const isDueno = user?.rol === 'DUENO_RECINTO';
   const [eventos, setEventos] = useState<EventoCatalogo[]>([]);
   const [selectedEventoId, setSelectedEventoId] = useState<number | null>(null);
   const [localidades, setLocalidades] = useState<LocalidadMapa[]>([]);
@@ -45,17 +48,36 @@ export const AdminSeating: React.FC = () => {
 
   // Carga inicial
   useEffect(() => {
-    api.getEventos({ pageSize: 50 }).then((res) => {
-      const items = res?.items && res.items.length > 0 ? res.items : MOCK_EVENTOS;
-      setEventos(items);
-      if (items.length > 0) {
-        setSelectedEventoId(items[0].id);
+    const init = async () => {
+      try {
+        let recintosIds: number[] = [];
+        if (isDueno) {
+          try {
+            const recs = await api.getRecintos();
+            recintosIds = (recs || []).map((r: any) => r.id);
+          } catch {
+            recintosIds = [];
+          }
+        }
+
+        const res = await api.getEventos({ pageSize: 50 });
+        let items = res?.items && res.items.length > 0 ? res.items : MOCK_EVENTOS;
+        if (isDueno && recintosIds.length > 0) {
+          const propios = items.filter((e) => recintosIds.includes(e.recintoId));
+          if (propios.length > 0) items = propios;
+        }
+
+        setEventos(items);
+        if (items.length > 0) {
+          setSelectedEventoId(items[0].id);
+        }
+      } catch {
+        setEventos(MOCK_EVENTOS);
+        setSelectedEventoId(MOCK_EVENTOS[0].id);
       }
-    }).catch(() => {
-      setEventos(MOCK_EVENTOS);
-      setSelectedEventoId(MOCK_EVENTOS[0].id);
-    });
-  }, []);
+    };
+    init();
+  }, [isDueno]);
 
   // Cargar localidades cuando cambia el evento
   useEffect(() => {
