@@ -769,7 +769,7 @@ function AppContent() {
               />
             }
           />
-          <Route path="/admin" element={<Navigate to="/admin/catalogo" replace />} />
+          <Route path="/admin" element={<Navigate to={user?.rol === 'DUENO_RECINTO' ? '/admin/recintos' : '/admin/catalogo'} replace />} />
           <Route path="/admin/:tab" element={<AdminPanel />} />
           <Route path="*" element={<Navigate to="/catalogo" replace />} />
         </Routes>
