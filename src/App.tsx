@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
@@ -8,13 +8,12 @@ import { VenueMapModal } from './components/VenueMapModal';
 import { CheckoutModal } from './components/CheckoutModal';
 import { TicketCard } from './components/TicketCard';
 import { JoseAssistantDrawer } from './components/JoseAssistantDrawer';
-import { ScannerModal } from './components/ScannerModal';
 import { AuthModal } from './components/AuthModal';
 import { PasswordChangeModal } from './components/PasswordChangeModal';
 import { AdminPanel } from './components/AdminPanel';
 import { UserProfileModal } from './components/UserProfileModal';
-import { api, MOCK_EVENTOS, MOCK_EVENTO_DETALLE, MOCK_BOLETOS } from './api/client';
-import { EventoCatalogo, DetalleEventoPublico, BoletoResponse, CompraResponse } from './types/api';
+import { api, MOCK_EVENTOS, MOCK_EVENTO_DETALLE } from './api/client';
+import { EventoCatalogo, DetalleEventoPublico, BoletoResponse, CompraResponse, LocalidadMapa } from './types/api';
 import { 
   Ticket, 
   ShoppingBag, 
@@ -29,8 +28,11 @@ import {
   Sparkles,
   Map,
   XCircle,
-  ExternalLink
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
+
+const ScannerPage = React.lazy(() => import('./components/ScannerPage').then((module) => ({ default: module.ScannerPage })));
 
 // --- VISTA: DETALLE DE EVENTO INDIVIDUAL ---
 function EventoDetalleView({
@@ -393,12 +395,18 @@ function CatalogoView({
 // --- VISTA: MIS BOLETOS ---
 function BoletosView({
   boletos,
-  onCalificar
+  onCalificar,
+  cargando,
+  error,
+  onActualizar,
 }: {
   boletos: BoletoResponse[];
   onCalificar: (boleto: BoletoResponse) => void;
+  cargando: boolean;
+  error: string | null;
+  onActualizar: () => void;
 }) {
-  const [filtroBoleto, setFiltroBoleto] = useState<'TODOS' | 'VALIDO' | 'USADO'>('TODOS');
+  const [filtroBoleto, setFiltroBoleto] = useState<'TODOS' | 'VALIDO' | 'USADO' | 'ANULADO'>('TODOS');
 
   const boletosFiltrados = boletos.filter((b) => {
     if (filtroBoleto === 'TODOS') return true;
@@ -427,7 +435,10 @@ function BoletosView({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onActualizar} disabled={cargando} className="btn btn-sm btn-outline" title="Actualizar boletos">
+            <RefreshCw size={15} className={cargando ? 'spin' : undefined} />
+          </button>
           <button
             onClick={() => setFiltroBoleto('TODOS')}
             className={`btn btn-sm ${filtroBoleto === 'TODOS' ? 'btn-inverse' : 'btn-outline'}`}
@@ -446,10 +457,27 @@ function BoletosView({
           >
             Usados ({boletos.filter((b) => b.estado === 'USADO').length})
           </button>
+          <button
+            onClick={() => setFiltroBoleto('ANULADO')}
+            className={`btn btn-sm ${filtroBoleto === 'ANULADO' ? 'btn-inverse' : 'btn-outline'}`}
+          >
+            Anulados ({boletos.filter((b) => b.estado === 'ANULADO').length})
+          </button>
         </div>
       </div>
 
-      {boletosFiltrados.length === 0 ? (
+      {error && (
+        <div role="alert" style={{ padding: '16px 20px', marginBottom: '18px', border: '2px solid var(--accent-vermilion)', background: 'var(--accent-vermilion-soft)', color: 'var(--accent-vermilion)' }}>
+          {error}
+        </div>
+      )}
+
+      {cargando ? (
+        <div role="status" style={{ textAlign: 'center', padding: '64px 20px', backgroundColor: 'var(--bg-surface)', border: '2px dashed var(--border-medium)' }}>
+          <RefreshCw size={32} className="spin" style={{ color: 'var(--accent-cobalt)', marginBottom: '12px' }} />
+          <h3>Cargando tus boletos…</h3>
+        </div>
+      ) : boletosFiltrados.length === 0 ? (
         <div style={{
           textAlign: 'center',
           padding: '80px 20px',
@@ -457,10 +485,11 @@ function BoletosView({
           border: '2px dashed var(--border-medium)'
         }}>
           <Ticket size={48} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
-          <h3 style={{ fontSize: '1.3rem', marginBottom: '8px' }}>No hay boletos en esta sección</h3>
+          <h3 style={{ fontSize: '1.3rem', marginBottom: '8px' }}>{error ? 'No se pudieron cargar los boletos' : 'No hay boletos en esta sección'}</h3>
           <p style={{ color: 'var(--text-secondary)' }}>
-            Adquiere tus entradas en la cartelera principal.
+            {error ? 'Verifica tu conexión e intenta actualizar de nuevo.' : 'Adquiere tus entradas en la cartelera principal.'}
           </p>
+          {error && <button type="button" onClick={onActualizar} className="btn btn-sm btn-outline" style={{ marginTop: '14px' }}>Reintentar</button>}
         </div>
       ) : (
         <div style={{
@@ -607,7 +636,7 @@ function ComprasView({
 
 // --- COMPONENTE PRINCIPAL CON RUTAS ---
 function AppContent() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Catálogo y Búsqueda
@@ -616,14 +645,16 @@ function AppContent() {
   // Modales
   const [eventoParaMapa, setEventoParaMapa] = useState<EventoCatalogo | null>(null);
   const [eventoParaCompra, setEventoParaCompra] = useState<DetalleEventoPublico | null>(null);
+  const [localidadParaCompra, setLocalidadParaCompra] = useState<LocalidadMapa | null>(null);
 
   // Boletos y Compras
-  const [misBoletos, setMisBoletos] = useState<BoletoResponse[]>(MOCK_BOLETOS);
+  const [misBoletos, setMisBoletos] = useState<BoletoResponse[]>([]);
+  const [cargandoBoletos, setCargandoBoletos] = useState(false);
+  const [errorBoletos, setErrorBoletos] = useState<string | null>(null);
   const [misCompras, setMisCompras] = useState<CompraResponse[]>([]);
 
   // Modales Globales
   const [isJoseOpen, setIsJoseOpen] = useState(false);
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isManualPasswordChangeOpen, setIsManualPasswordChangeOpen] = useState(false);
@@ -644,48 +675,46 @@ function AppContent() {
     });
   }, []);
 
-  // Cargar boletos y compras SOLO cuando el usuario es CLIENTE (admin y dueños no tienen boletos de consumidor)
+  const cargarBoletos = useCallback(async () => {
+    if (user?.rol !== 'CLIENTE') {
+      setMisBoletos([]);
+      setErrorBoletos(null);
+      setCargandoBoletos(false);
+      return;
+    }
+
+    setCargandoBoletos(true);
+    setErrorBoletos(null);
+    try {
+      setMisBoletos(await api.getMisBoletos());
+    } catch {
+      setMisBoletos([]);
+      setErrorBoletos('No se pudieron cargar tus boletos. Intenta nuevamente.');
+    } finally {
+      setCargandoBoletos(false);
+    }
+  }, [user?.rol]);
+
+  // Cargar boletos y compras SOLO cuando el usuario es CLIENTE.
   useEffect(() => {
     if (user && user.rol === 'CLIENTE') {
-      api.getMisBoletos().then((boletos) => {
-        if (boletos && boletos.length > 0) {
-          setMisBoletos(boletos);
-        }
-      }).catch(() => {});
-
+      void cargarBoletos();
       api.getMisCompras().then((res) => {
-        if (res && res.items) {
-          setMisCompras(res.items);
-        }
+        if (res && res.items) setMisCompras(res.items);
       }).catch(() => {});
     } else {
-      setMisBoletos([]);
+      void cargarBoletos();
       setMisCompras([]);
     }
-  }, [user]);
+  }, [user, cargarBoletos]);
 
   const handleCompraExitosa = (compra: CompraResponse) => {
-    setMisCompras((prev) => [compra, ...prev]);
-    if (eventoParaCompra) {
-      const nuevosBoletos: BoletoResponse[] = compra.items.flatMap((item, idx) =>
-        Array.from({ length: item.cantidad }).map((_, i) => ({
-          id: Math.floor(Math.random() * 9000) + 1000,
-          compraId: compra.id,
-          publicIdCompra: compra.publicId,
-          eventoId: eventoParaCompra.id,
-          eventoTitulo: eventoParaCompra.titulo,
-          recintoNombre: eventoParaCompra.recintoNombre,
-          fechaInicio: eventoParaCompra.fechaInicio,
-          tipoEntradaId: item.tipoEntradaId,
-          tipoEntradaNombre: item.tipoEntradaNombre,
-          codigoQr: `HMAC_SHA256_TICKET_${compra.publicId}_${item.id}_${i}_VERIFIED_SECURE`,
-          estado: 'VALIDO',
-          precioFinal: item.precioUnitario,
-          asistenteNombre: user?.nombre || 'Titular',
-        }))
-      );
-      setMisBoletos((prev) => [...nuevosBoletos, ...prev]);
-    }
+    setMisCompras((prev) => [compra, ...prev.filter((item) => item.publicId !== compra.publicId)]);
+    void cargarBoletos();
+  };
+
+  const handleCompraPendiente = (compra: CompraResponse) => {
+    setMisCompras((prev) => [compra, ...prev.filter((item) => item.publicId !== compra.publicId)]);
   };
 
   const handleCancelarCompra = async (publicId: string) => {
@@ -722,7 +751,7 @@ function AppContent() {
       {/* Navbar Superior con Navegación por URL */}
       <Navbar
         onOpenJose={() => setIsJoseOpen(true)}
-        onOpenScanner={() => setIsScannerOpen(true)}
+        onOpenScanner={() => navigate('/control-acceso')}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}
       />
@@ -745,7 +774,7 @@ function AppContent() {
             path="/eventos/:id"
             element={
               <EventoDetalleView
-                onComprar={(ev) => setEventoParaCompra(ev)}
+                onComprar={(ev) => { setEventoParaCompra(null); setLocalidadParaCompra(null); setEventoParaMapa(ev); }}
                 onVerMapa={(ev) => setEventoParaMapa(ev)}
               />
             }
@@ -756,8 +785,19 @@ function AppContent() {
               <BoletosView
                 boletos={misBoletos}
                 onCalificar={(boleto) => setBoletoParaResena(boleto)}
+                cargando={cargandoBoletos}
+                error={errorBoletos}
+                onActualizar={() => void cargarBoletos()}
               />
             }
+          />
+          <Route
+            path="/control-acceso"
+            element={authLoading
+              ? <div className="container" role="status" style={{ padding: '80px 24px' }}>Verificando sesión…</div>
+              : user && (user.rol === 'ADMINISTRADOR' || user.rol === 'DUENO_RECINTO')
+                ? <React.Suspense fallback={<div className="container" role="status" style={{ padding: '80px 24px' }}>Cargando control de acceso…</div>}><ScannerPage /></React.Suspense>
+                : <Navigate to="/catalogo" replace />}
           />
           <Route
             path="/compras"
@@ -841,9 +881,10 @@ function AppContent() {
           evento={eventoParaMapa}
           onClose={() => setEventoParaMapa(null)}
           onSelectLocalidad={(localidad) => {
-            setEventoParaCompra({
-              ...eventoParaMapa,
-              tiposEntrada: MOCK_EVENTO_DETALLE.tiposEntrada,
+            setLocalidadParaCompra(localidad);
+            void api.getEvento(eventoParaMapa.id).then(setEventoParaCompra).catch((error: any) => {
+              setLocalidadParaCompra(null);
+              alert(error?.detail || 'No se pudieron cargar las tarifas reales de esta localidad. Intenta nuevamente.');
             });
           }}
         />
@@ -852,7 +893,9 @@ function AppContent() {
       {eventoParaCompra && (
         <CheckoutModal
           evento={eventoParaCompra}
-          onClose={() => setEventoParaCompra(null)}
+          localidadSeleccionada={localidadParaCompra}
+          onClose={() => { setEventoParaCompra(null); setLocalidadParaCompra(null); }}
+          onPending={handleCompraPendiente}
           onSuccess={(compra) => {
             handleCompraExitosa(compra);
             navigate('/boletos');
@@ -864,10 +907,6 @@ function AppContent() {
         isOpen={isJoseOpen}
         onClose={() => setIsJoseOpen(false)}
       />
-
-      {isScannerOpen && (
-        <ScannerModal onClose={() => setIsScannerOpen(false)} />
-      )}
 
       <AuthModal
         isOpen={isAuthOpen}

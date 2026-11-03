@@ -53,6 +53,14 @@ body {
   overflow-x: hidden;
 }
 
+.spin, .animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Typography Headings */
 h1, h2, h3, h4, .font-display {
   font-family: var(--font-display);

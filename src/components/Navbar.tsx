@@ -254,7 +254,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="Escáner de Boletos para Control de Ingreso"
             >
               <QrCode size={16} />
-              Validar Acceso
+              Control de Acceso
             </button>
           )}
         </nav>

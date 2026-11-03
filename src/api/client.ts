@@ -2,13 +2,16 @@ import {
   ActualizarUsuarioRequest,
   AltaAdministradorRequest,
   AltaDuenoRequest,
+  ApiPaginaDto,
   BoletoResponse,
+  BoletoClienteApiDto,
   CategoriaDetalleDto,
   CompraResponse,
   ConsultaIaResponse,
   CrearCompraRequest,
   CuentaFinancieraDto,
   DatosLocalidadRequest,
+  DatosDistribucionRequest,
   DetalleEventoPublico,
   DistribucionDto,
   DocumentoRagDto,
@@ -22,7 +25,6 @@ import {
   PresentadorDetalleDto,
   RecintoPublico,
   ResenaPublica,
-  SillaDto,
   UsuarioDetalleDto,
   UsuarioDto,
   UsuarioSesion,
@@ -126,6 +128,9 @@ class ApiClient {
     } catch (err: any) {
       // Si la API no está disponible (ej: desarrollo sin docker levantado), recurrir a mocks ilustrativos
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        // Los QR y su validación siempre requieren datos reales del servidor.
+        // Nunca emitir ni aceptar boletos de demostración si la API no responde.
+        if (endpoint.startsWith('/boletos') || endpoint.startsWith('/compras') || endpoint.includes('/asientos') || endpoint.includes('/distribucion')) throw err;
         console.warn(`[API Client] Error conectando a ${url}. Usando fallback ilustrativo para desarrollo.`, err);
         return this.getMockResponse<T>(endpoint, options);
       }
@@ -459,13 +464,46 @@ class ApiClient {
 
   // --- Boletos ---
   public async getMisBoletos(): Promise<BoletoResponse[]> {
-    return this.request<BoletoResponse[]>('/boletos');
+    const boletos: BoletoClienteApiDto[] = [];
+    const pageSize = 100;
+    let page = 1;
+    let total = 0;
+
+    do {
+      const respuesta = await this.request<ApiPaginaDto<BoletoClienteApiDto>>(
+        `/boletos?page=${page}&pageSize=${pageSize}`
+      );
+      boletos.push(...(respuesta.items || []));
+      total = respuesta.total || 0;
+      page += 1;
+      if (!respuesta.items?.length) break;
+    } while (boletos.length < total);
+
+    return boletos.map((boleto) => ({
+      id: boleto.publicId,
+      publicId: boleto.publicId,
+      compraId: boleto.compraPublicId,
+      publicIdCompra: boleto.compraPublicId,
+      eventoId: boleto.eventoId,
+      eventoTitulo: boleto.eventoTitulo,
+      recintoNombre: boleto.recintoNombre,
+      fechaInicio: boleto.fechaInicio,
+      tipoEntradaId: boleto.tipoEntradaId,
+      tipoEntradaNombre: boleto.tipoEntradaNombre,
+      codigoQr: boleto.codigoQr,
+      estado: boleto.estado,
+      precioFinal: boleto.precioUnitario,
+      asistenteNombre: boleto.asistente?.nombreAsistente || undefined,
+      fechaUso: boleto.fechaUso || undefined,
+      ubicacion: boleto.ubicacion || null,
+    }));
   }
 
   public async validarBoleto(codigoQr: string): Promise<{
-    valido: boolean;
-    mensaje: string;
-    boleto?: BoletoResponse;
+    publicId: string;
+    estado: 'USADO';
+    fechaUso: string;
+    ubicacion?: BoletoResponse['ubicacion'];
   }> {
     return this.request('/boletos/validar', {
       method: 'POST',
@@ -885,11 +923,11 @@ class ApiClient {
   }
 
   // --- Distribuciones y Mesas Numeradas (6 endpoints) ---
-  public async getDistribucion(eventoId: number, localidadId: number): Promise<DistribucionDto> {
-    return this.request<DistribucionDto>(`/eventos/${eventoId}/localidades/${localidadId}/distribucion`);
+  public async getDistribucion(eventoId: number, localidadId: number, page = 1, pageSize = 100): Promise<DistribucionDto> {
+    return this.request<DistribucionDto>(`/eventos/${eventoId}/localidades/${localidadId}/distribucion?page=${page}&pageSize=${pageSize}`);
   }
 
-  public async guardarDistribucion(eventoId: number, localidadId: number, data: any): Promise<DistribucionDto> {
+  public async guardarDistribucion(eventoId: number, localidadId: number, data: DatosDistribucionRequest): Promise<DistribucionDto> {
     return this.request<DistribucionDto>(`/eventos/${eventoId}/localidades/${localidadId}/distribucion`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -900,8 +938,10 @@ class ApiClient {
     await this.request(`/eventos/${eventoId}/localidades/${localidadId}/distribucion/publicar`, { method: 'POST' });
   }
 
-  public async getAsientos(eventoId: number, localidadId: number): Promise<SillaDto[]> {
-    return this.request<SillaDto[]>(`/eventos/${eventoId}/localidades/${localidadId}/asientos`);
+  public async getAsientos(eventoId: number, localidadId: number, page = 1, pageSize = 100, mesaId?: number): Promise<DistribucionDto> {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (mesaId) query.set('mesaId', String(mesaId));
+    return this.request<DistribucionDto>(`/eventos/${eventoId}/localidades/${localidadId}/asientos?${query.toString()}`);
   }
 
   public async bloquearAsiento(eventoId: number, localidadId: number, asientoIds: number[] | number): Promise<void> {

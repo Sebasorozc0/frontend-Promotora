@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { DetalleEventoPublico, TipoEntradaPublico, CompraResponse, AsistenteItem } from '../types/api';
+import { DetalleEventoPublico, TipoEntradaPublico, CompraResponse, AsistenteItem, DistribucionDto, LocalidadMapa, SillaDto } from '../types/api';
+import { fromNormalizedPoint, SEAT_MAP_HEIGHT, SEAT_MAP_WIDTH } from './seating/geometry';
 import { 
   X, 
   Ticket, 
@@ -19,13 +21,18 @@ interface CheckoutModalProps {
   evento: DetalleEventoPublico;
   onClose: () => void;
   onSuccess: (compra: CompraResponse) => void;
+  onPending: (compra: CompraResponse) => void;
+  localidadSeleccionada?: LocalidadMapa | null;
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   evento,
   onClose,
   onSuccess,
+  onPending,
+  localidadSeleccionada = null,
 }) => {
+  const navigate = useNavigate();
   // Cantidades por tipo de entrada
   const [quantities, setQuantities] = useState<Record<number, number>>(() => {
     const initial: Record<number, number> = {};
@@ -43,15 +50,87 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [paso, setPaso] = useState<'SELECCION' | 'ASISTENTES' | 'CONFIRMACION' | 'PROCESANDO' | 'EXITO'>('SELECCION');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [compraActual, setCompraActual] = useState<CompraResponse | null>(null);
+  const [esperaProlongada, setEsperaProlongada] = useState(false);
+  const [estadoAsientos, setEstadoAsientos] = useState<'CARGANDO' | 'GENERAL' | 'NUMERADA' | 'ERROR'>(localidadSeleccionada ? 'CARGANDO' : 'GENERAL');
+  const [distribucion, setDistribucion] = useState<DistribucionDto | null>(null);
+  const [asientosSeleccionados, setAsientosSeleccionados] = useState<number[]>([]);
+  const [errorAsientos, setErrorAsientos] = useState<string | null>(null);
+
+  const cargarAsientos = async (conservarSeleccion = false) => {
+    if (!localidadSeleccionada) {
+      setEstadoAsientos('GENERAL');
+      setDistribucion(null);
+      return;
+    }
+    setEstadoAsientos('CARGANDO');
+    setErrorAsientos(null);
+    try {
+      const first = await api.getAsientos(evento.id, localidadSeleccionada.id, 1, 100);
+      const pages = Math.max(1, Math.ceil(first.totalMesas / 100), Math.ceil(first.totalAsientos / 100));
+      const remaining = await Promise.all(Array.from({ length: pages - 1 }, (_, index) =>
+        api.getAsientos(evento.id, localidadSeleccionada.id, index + 2, 100),
+      ));
+      const full: DistribucionDto = {
+        ...first,
+        mesas: [first, ...remaining].flatMap((page) => page.mesas),
+        asientos: [first, ...remaining].flatMap((page) => page.asientos),
+      };
+      setDistribucion(full);
+      setEstadoAsientos(full.estado === 'PUBLICADA' ? 'NUMERADA' : 'GENERAL');
+      if (conservarSeleccion) {
+        const disponibles = new Set(full.asientos.filter((asiento) => asiento.estado === 'DISPONIBLE').map((asiento) => asiento.id));
+        setAsientosSeleccionados((actuales) => {
+          let siguientes = actuales.filter((id) => disponibles.has(id));
+          for (const mesa of full.mesas.filter((item) => item.modalidad === 'COMPLETA')) {
+            const idsMesa = full.asientos.filter((asiento) => asiento.mesaId === mesa.id).map((asiento) => asiento.id);
+            const seleccionParcial = idsMesa.some((id) => siguientes.includes(id)) && !idsMesa.every((id) => siguientes.includes(id));
+            if (seleccionParcial) siguientes = siguientes.filter((id) => !idsMesa.includes(id));
+          }
+          return siguientes;
+        });
+      } else {
+        setAsientosSeleccionados([]);
+      }
+    } catch (error: any) {
+      if (error?.status === 404) {
+        setDistribucion(null);
+        setEstadoAsientos('GENERAL');
+        setAsientosSeleccionados([]);
+      } else {
+        setEstadoAsientos('ERROR');
+        setErrorAsientos(error?.detail || 'No se pudo consultar la disponibilidad de esta localidad.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    void cargarAsientos();
+  }, [evento.id, localidadSeleccionada?.id]);
+
+  const tiposVisibles = useMemo(() => localidadSeleccionada
+    ? evento.tiposEntrada.filter((tipo) => tipo.localidadId === localidadSeleccionada.id)
+    : evento.tiposEntrada, [evento.tiposEntrada, localidadSeleccionada]);
+
+  useEffect(() => {
+    if (!localidadSeleccionada || !tiposVisibles.length) return;
+    setQuantities((actuales) => {
+      if (tiposVisibles.some((tipo) => (actuales[tipo.id] || 0) > 0)) return actuales;
+      return { ...actuales, [tiposVisibles[0].id]: 1 };
+    });
+  }, [evento.id, localidadSeleccionada?.id, tiposVisibles]);
 
   // Cálculo D-15 (Garantía idéntica a Domain)
-  const itemsSeleccionados = evento.tiposEntrada
-    .filter((t) => (quantities[t.id] || 0) > 0)
-    .map((t) => ({
-      tipo: t,
-      cantidad: quantities[t.id],
-      subtotal: quantities[t.id] * t.precioUnitario,
-    }));
+  const itemsSeleccionados = tiposVisibles
+    .map((tipo) => {
+      const asientoIds = estadoAsientos === 'NUMERADA'
+        ? asientosSeleccionados.filter((id) => distribucion?.asientos.find((asiento) => asiento.id === id)?.tipoEntradaId === tipo.id)
+        : undefined;
+      const cantidad = estadoAsientos === 'NUMERADA'
+        ? (asientoIds?.length || 0)
+        : estadoAsientos === 'GENERAL' ? (quantities[tipo.id] || 0) : 0;
+      return { tipo, cantidad, asientoIds, subtotal: cantidad * tipo.precioUnitario };
+    })
+    .filter((item) => item.cantidad > 0);
 
   const totalBoletos = itemsSeleccionados.reduce((acc, curr) => acc + curr.cantidad, 0);
   const subtotal = itemsSeleccionados.reduce((acc, curr) => acc + curr.subtotal, 0);
@@ -72,9 +151,41 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setQuantities((prev) => ({ ...prev, [tipoId]: qty }));
   };
 
+  const alternarAsiento = (asiento: SillaDto) => {
+    if (asiento.estado !== 'DISPONIBLE') return;
+    const mesa = distribucion?.mesas.find((item) => item.id === asiento.mesaId);
+    const grupo = mesa?.modalidad === 'COMPLETA'
+      ? distribucion?.asientos.filter((item) => item.mesaId === mesa.id) || []
+      : [asiento];
+    if (grupo.some((item) => item.estado !== 'DISPONIBLE')) {
+      setErrorAsientos('Esta mesa se vende completa y ya no está totalmente disponible. Actualiza el plano.');
+      return;
+    }
+    const ids = grupo.map((item) => item.id);
+    const todosSeleccionados = ids.every((id) => asientosSeleccionados.includes(id));
+    const siguientes = todosSeleccionados
+      ? asientosSeleccionados.filter((id) => !ids.includes(id))
+      : [...new Set([...asientosSeleccionados, ...ids])];
+    if (siguientes.length > evento.maxBoletosPorCompra) {
+      setErrorMsg(`El límite máximo es de ${evento.maxBoletosPorCompra} boletos por compra.`);
+      return;
+    }
+    setErrorMsg(null);
+    setErrorAsientos(null);
+    setAsientosSeleccionados(siguientes);
+  };
+
   const handleIniciarCompra = async () => {
+    if (estadoAsientos === 'CARGANDO') {
+      setErrorMsg('Espera a que termine de cargar la disponibilidad de asientos.');
+      return;
+    }
+    if (estadoAsientos === 'ERROR') {
+      setErrorMsg(errorAsientos || 'No se pudo validar la disponibilidad. Intenta recargarla.');
+      return;
+    }
     if (totalBoletos === 0) {
-      setErrorMsg('Selecciona al menos una entrada para continuar.');
+      setErrorMsg(estadoAsientos === 'NUMERADA' ? 'Selecciona al menos un asiento disponible para continuar.' : 'Selecciona al menos una entrada para continuar.');
       return;
     }
 
@@ -95,6 +206,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
     setPaso('PROCESANDO');
     setErrorMsg(null);
+    setEsperaProlongada(false);
 
     const idempotencyKey = crypto.randomUUID();
 
@@ -104,6 +216,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         tipoEntradaId: item.tipo.id,
         cantidad: item.cantidad,
         asistentes: isCarrera ? asistentes[item.tipo.id] : undefined,
+        asientoIds: item.asientoIds,
       })),
     };
 
@@ -129,20 +242,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             setErrorMsg(`La compra no pudo completarse. Estado: ${statusRes.estado}`);
             setPaso('SELECCION');
           } else if (intentos > 15) {
-            // Si el worker asíncrono no está corriendo en dev, completamos la demostración
             clearInterval(pollInterval);
-            const demoCompleted = { ...res, estado: 'COMPLETADA' as const };
-            setCompraActual(demoCompleted);
-            setPaso('EXITO');
-            onSuccess(demoCompleted);
+            setEsperaProlongada(true);
+            onPending(statusRes);
           }
         } catch (e) {
-          // Continuar polling
+          if (intentos > 15) {
+            clearInterval(pollInterval);
+            setEsperaProlongada(true);
+            onPending(res);
+          }
         }
       }, 1000);
     } catch (err: any) {
       setPaso('SELECCION');
-      setErrorMsg(err.detail || err.title || 'Error al procesar la reserva. Intenta nuevamente.');
+      if (err?.status === 409 && estadoAsientos === 'NUMERADA') {
+        await cargarAsientos(true);
+        setErrorMsg('La disponibilidad cambió mientras elegías. Actualicé el plano; revisa tus asientos y vuelve a intentar.');
+      } else {
+        setErrorMsg(err.detail || err.title || 'Error al procesar la reserva. Intenta nuevamente.');
+      }
     }
   };
 
@@ -197,14 +316,72 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           {paso === 'SELECCION' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h4 style={{ fontSize: '1.1rem' }}>Selecciona tus Localidades</h4>
+                <h4 style={{ fontSize: '1.1rem' }}>{estadoAsientos === 'NUMERADA' ? 'Selecciona tus asientos' : 'Selecciona tus entradas'}</h4>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                   Máx. {evento.maxBoletosPorCompra} entradas
                 </span>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-                {evento.tiposEntrada.map((tipo) => {
+              {localidadSeleccionada && <div style={{ marginBottom: 14, padding: 12, border: '1px solid var(--border-strong)', background: 'var(--bg-canvas)' }}>
+                Localidad elegida: <strong>{localidadSeleccionada.nombre}</strong>
+                {estadoAsientos === 'CARGANDO' && <div style={{ marginTop: 6 }}>Cargando plano y disponibilidad…</div>}
+                {estadoAsientos === 'ERROR' && <div role="alert" style={{ marginTop: 8, color: '#B91C1C' }}>
+                  {errorAsientos || 'No se pudo consultar la disponibilidad.'}{' '}
+                  <button type="button" className="btn btn-sm btn-outline" onClick={() => void cargarAsientos()}>Reintentar</button>
+                </div>}
+                {estadoAsientos === 'GENERAL' && <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}>Esta localidad vende entradas generales por cantidad.</div>}
+              </div>}
+
+              {estadoAsientos === 'NUMERADA' && distribucion && <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <div style={{ fontSize: '.86rem', color: 'var(--text-secondary)' }}>Elige los lugares verdes. Las mesas completas se seleccionan como una unidad.</div>
+                  <button type="button" className="btn btn-sm btn-outline" onClick={() => void cargarAsientos(true)}>Actualizar disponibilidad</button>
+                </div>
+                <div style={{ border: '1.5px solid var(--border-strong)', background: '#0A0C10', overflow: 'hidden' }}>
+                  <svg viewBox={`0 0 ${SEAT_MAP_WIDTH} ${SEAT_MAP_HEIGHT}`} role="group" aria-label={`Asientos disponibles de ${localidadSeleccionada?.nombre || 'la localidad'}`} style={{ width: '100%', display: 'block' }}>
+                    {localidadSeleccionada?.geometria?.points && <polygon points={localidadSeleccionada.geometria.points.map(([x, y]) => `${x},${y}`).join(' ')} fill={localidadSeleccionada.color || '#2563EB'} fillOpacity=".16" stroke={localidadSeleccionada.color || '#60A5FA'} strokeWidth="3" />}
+                    <text x="500" y="30" textAnchor="middle" fill="#fff" fontSize="16" fontWeight="800">ESCENARIO</text>
+                    {distribucion.mesas.map((mesa) => {
+                      const [x, y] = fromNormalizedPoint(mesa.x, mesa.y);
+                      return <g key={mesa.id} aria-label={`${mesa.etiqueta}, ${mesa.modalidad === 'COMPLETA' ? 'mesa completa' : 'por silla'}`}>
+                        <circle cx={x} cy={y} r="23" fill="#E5E7EB" stroke="#111827" strokeWidth="2" />
+                        <text x={x} y={y + 4} textAnchor="middle" fill="#111827" fontSize="10" fontWeight="800" pointerEvents="none">{mesa.etiqueta}</text>
+                      </g>;
+                    })}
+                    {distribucion.asientos.map((asiento) => {
+                      const [x, y] = fromNormalizedPoint(asiento.x, asiento.y);
+                      const mesa = distribucion.mesas.find((item) => item.id === asiento.mesaId);
+                      const grupo = mesa?.modalidad === 'COMPLETA' ? distribucion.asientos.filter((item) => item.mesaId === mesa.id) : [asiento];
+                      const mesaDisponible = grupo.every((item) => item.estado === 'DISPONIBLE');
+                      const selected = asientosSeleccionados.includes(asiento.id);
+                      const color = selected ? '#FACC15' : asiento.estado === 'DISPONIBLE' ? '#10B981' : asiento.estado === 'BLOQUEADO' ? '#EF4444' : asiento.estado === 'RESERVADO' ? '#F59E0B' : '#3B82F6';
+                      const disabled = asiento.estado !== 'DISPONIBLE' || (mesa?.modalidad === 'COMPLETA' && !mesaDisponible);
+                      return <g key={asiento.id} onClick={() => alternarAsiento(asiento)} role="button" tabIndex={disabled ? -1 : 0} aria-pressed={selected} aria-label={`${asiento.fila ? `Fila ${asiento.fila}, ` : ''}${asiento.etiqueta}, ${selected ? 'seleccionado' : asiento.estado.toLowerCase()}`} onKeyDown={(event) => { if ((event.key === 'Enter' || event.key === ' ') && !disabled) { event.preventDefault(); alternarAsiento(asiento); } }} style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}>
+                        <circle cx={x} cy={y} r="14" fill={color} stroke={selected ? '#fff' : '#111827'} strokeWidth={selected ? 4 : 2} opacity={disabled ? '.72' : 1} />
+                        <text x={x} y={y + 4} textAnchor="middle" fill={selected ? '#111827' : '#fff'} fontSize="8" fontWeight="800" pointerEvents="none">{asiento.etiqueta.slice(-6)}</text>
+                        <title>{`${mesa?.etiqueta ? `${mesa.etiqueta} · ` : ''}${asiento.fila ? `Fila ${asiento.fila} · ` : ''}${asiento.etiqueta} · ${tiposVisibles.find((tipo) => tipo.id === asiento.tipoEntradaId)?.nombre || 'Tarifa'} · Q${tiposVisibles.find((tipo) => tipo.id === asiento.tipoEntradaId)?.precioUnitario.toFixed(2) || '—'} · ${asiento.estado}`}</title>
+                      </g>;
+                    })}
+                  </svg>
+                </div>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: '.78rem', marginTop: 8 }}>
+                  {[['#10B981', 'Disponible'], ['#F59E0B', 'Reservado'], ['#3B82F6', 'Vendido'], ['#EF4444', 'Bloqueado'], ['#FACC15', 'Seleccionado']].map(([color, label]) => <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><i aria-hidden="true" style={{ width: 10, height: 10, background: color, borderRadius: '50%' }} />{label}</span>)}
+                </div>
+                {asientosSeleccionados.length > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, padding: 10, background: 'var(--bg-canvas)' }}>
+                  <span>{asientosSeleccionados.length} asiento(s) elegido(s): {distribucion.asientos.filter((asiento) => asientosSeleccionados.includes(asiento.id)).map((asiento) => `${asiento.fila ? `${asiento.fila}-` : ''}${asiento.etiqueta}`).join(', ')}</span>
+                  <button type="button" className="btn btn-sm btn-outline" onClick={() => setAsientosSeleccionados([])}>Limpiar selección</button>
+                </div>}
+                {itemsSeleccionados.length > 0 && <div style={{ marginTop: 8, display: 'grid', gap: 4, fontSize: '.82rem' }}>
+                  {itemsSeleccionados.map((item) => <div key={item.tipo.id}>{item.tipo.nombre}: {item.cantidad} × Q{item.tipo.precioUnitario.toFixed(2)} = Q{item.subtotal.toFixed(2)}</div>)}
+                </div>}
+                {errorAsientos && <div role="alert" style={{ marginTop: 8, color: '#B91C1C' }}>{errorAsientos}</div>}
+              </div>}
+
+              {estadoAsientos === 'NUMERADA' && distribucion?.asientos.length === 0 && <div style={{ padding: 14, background: '#FEF3C7' }}>Esta localidad no tiene asientos cargados.</div>}
+              {estadoAsientos === 'GENERAL' && localidadSeleccionada && tiposVisibles.length === 0 && <div style={{ padding: 14, background: '#FEF3C7' }}>No encontramos tarifas de venta para esta localidad.</div>}
+
+              {estadoAsientos === 'GENERAL' && <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+                {tiposVisibles.map((tipo) => {
                   const qty = quantities[tipo.id] || 0;
                   return (
                     <div
@@ -256,7 +433,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     </div>
                   );
                 })}
-              </div>
+              </div>}
 
               {/* Desglose Financiero D-15 */}
               {totalBoletos > 0 && (
@@ -406,15 +583,24 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           {/* PASO 3: Procesando en Cola RabbitMQ */}
           {paso === 'PROCESANDO' && (
             <div style={{ textAlign: 'center', padding: '40px 10px' }}>
-              <Loader2 size={48} className="spin" style={{ color: 'var(--accent-vermilion)', margin: '0 auto 16px auto', animation: 'spin 1s linear infinite' }} />
-              <h3 style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Procesando en Cola Asíncrona</h3>
+              {esperaProlongada
+                ? <Clock size={48} style={{ color: 'var(--accent-amber)', margin: '0 auto 16px auto' }} />
+                : <Loader2 size={48} className="spin" style={{ color: 'var(--accent-vermilion)', margin: '0 auto 16px auto', animation: 'spin 1s linear infinite' }} />}
+              <h3 style={{ fontSize: '1.5rem', marginBottom: '8px' }}>{esperaProlongada ? 'Compra en proceso' : 'Procesando en Cola Asíncrona'}</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: '420px', margin: '0 auto 16px auto' }}>
-                Tu solicitud ha sido encolada con confirmación atómica. Estamos emitiendo tus boletos firmados criptográficamente...
+                {esperaProlongada
+                  ? 'La compra sigue procesándose. Consulta Mis Compras más tarde; los boletos aparecerán cuando el servidor confirme el pago y su emisión.'
+                  : 'Tu solicitud ha sido encolada con confirmación atómica. Estamos procesando el pago y la emisión de tus boletos...'}
               </p>
               {compraActual && (
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                   ID Transacción: {compraActual.publicId} · Estado: {compraActual.estado}
                 </div>
+              )}
+              {esperaProlongada && (
+                <button type="button" onClick={() => { onClose(); navigate('/compras'); }} className="btn btn-outline" style={{ marginTop: '20px' }}>
+                  Cerrar y consultar Mis Compras
+                </button>
               )}
             </div>
           )}
@@ -493,7 +679,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
             <button
               onClick={handleIniciarCompra}
-              disabled={totalBoletos === 0}
+              disabled={totalBoletos === 0 || estadoAsientos === 'CARGANDO' || estadoAsientos === 'ERROR'}
               className="btn btn-primary"
             >
               {paso === 'ASISTENTES' ? (
@@ -508,7 +694,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </>
               ) : (
                 <>
-                  Confirmar Compra (Q{total.toFixed(2)})
+                  {estadoAsientos === 'NUMERADA' ? 'Apartar asientos y pagar' : `Confirmar Compra (Q${total.toFixed(2)})`}
                   <CreditCard size={18} />
                 </>
               )}
