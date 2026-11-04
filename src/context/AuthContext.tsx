@@ -1,200 +1,63 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { api } from '../api/client';
 import { RolUsuario, UsuarioSesion } from '../types/api';
 
-interface AuthContextType {
-  user: UsuarioSesion | null;
-  isAuthenticated: boolean;
-  debeCambiarPassword: boolean;
-  isLoading: boolean;
-  login: (email: string, pass: string) => Promise<void>;
-  registro: (datos: {
-    nombre: string;
-    apellido: string;
-    email: string;
-    password: string;
-    telefono?: string;
-    dpi?: string;
-  }) => Promise<void>;
-  logout: () => Promise<void>;
-  cambiarPassword: (actual: string, nueva: string) => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-function parseJwtRole(token: string): RolUsuario {
+function role(token: string): RolUsuario | null {
   try {
-    const base64Url = token.split('.')[1];
-    if (!base64Url) return 'CLIENTE';
-    let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    while (base64.length % 4) {
-      base64 += '=';
-    }
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    const parsed = JSON.parse(jsonPayload);
-    const rawRole = (
-      parsed.role ||
-      parsed.rol ||
-      parsed['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
-      ''
-    ).toString().toUpperCase().trim();
-
-    if (rawRole === 'ADMINISTRADOR' || rawRole === 'DUENO_RECINTO' || rawRole === 'CLIENTE') {
-      return rawRole as RolUsuario;
-    }
-    return 'CLIENTE';
-  } catch (err) {
-    console.warn('[AuthContext] Error decodificando JWT:', err);
-    return 'CLIENTE';
-  }
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    const value = claims.role || claims.rol || claims['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+    return ['CLIENTE','ADMINISTRADOR','DUENO_RECINTO','VALIDADOR_BOLETOS'].includes(value) ? value : null;
+  } catch { return null; }
 }
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UsuarioSesion | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-
+function initial(): UsuarioSesion | null {
+  try {
+    const token = api.getAccessToken(); const stored = localStorage.getItem('promotora_user');
+    if (!token || !stored) return null;
+    const user = JSON.parse(stored); const rol = role(token);
+    return Number.isInteger(user.id) && user.email && rol ? { ...user, rol } : null;
+  } catch { return null; }
+}
+interface Registro { nombre: string; apellido: string; email: string; password: string; telefono?: string; }
+interface AuthContextType {
+  user: UsuarioSesion | null; isAuthenticated: boolean; debeCambiarPassword: boolean; isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>; registro: (datos: Registro) => Promise<void>;
+  logout: () => Promise<void>; cambiarPassword: (actual: string, nueva: string) => Promise<void>;
+}
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<UsuarioSesion | null>(initial);
+  const [isLoading, setLoading] = useState(false);
+  const generation = useRef(0);
+  const guardar = (next: UsuarioSesion | null) => { setUser(next); if (next) localStorage.setItem('promotora_user', JSON.stringify(next)); else localStorage.removeItem('promotora_user'); };
   useEffect(() => {
-    // Restaurar sesión de localStorage únicamente si existe token Y usuario válido
-    const token = api.getAccessToken();
-    const storedUser = localStorage.getItem('promotora_user');
-
-    if (!token || !storedUser) {
-      setUser(null);
-      localStorage.removeItem('promotora_user');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const parsed: UsuarioSesion = JSON.parse(storedUser);
-      if (parsed && parsed.email) {
-        const roleFromJwt = parseJwtRole(token);
-        if (roleFromJwt) {
-          parsed.rol = roleFromJwt;
-        }
-        setUser(parsed);
-        localStorage.setItem('promotora_user', JSON.stringify(parsed));
-
-        // Sincronizar y actualizar con datos de perfil reales en background
-        if (parsed.id) {
-          api.getPerfil(parsed.id).then((perfil) => {
-            if (perfil?.usuario) {
-              const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
-              const rolVerificado = (perfil.usuario.rol as RolUsuario) || parsed.rol;
-              const sincronizado: UsuarioSesion = {
-                ...parsed,
-                nombre: nombreCompleto || parsed.nombre,
-                rol: rolVerificado,
-              };
-              setUser(sincronizado);
-              localStorage.setItem('promotora_user', JSON.stringify(sincronizado));
-            }
-          }).catch(() => {});
-        }
-      } else {
-        setUser(null);
-        localStorage.removeItem('promotora_user');
-      }
-    } catch {
-      setUser(null);
-      localStorage.removeItem('promotora_user');
-    }
-    setIsLoading(false);
-
-    // Escuchar expiración total de sesión para limpiar UI
-    const handleExpired = () => {
-      setUser(null);
-      localStorage.removeItem('promotora_user');
-    };
-    window.addEventListener('promotora:session-expired', handleExpired);
-    return () => {
-      window.removeEventListener('promotora:session-expired', handleExpired);
-    };
+    const expired = () => { generation.current++; guardar(null); };
+    window.addEventListener('promotora:session-expired', expired);
+    return () => window.removeEventListener('promotora:session-expired', expired);
   }, []);
-
-  const login = async (email: string, pass: string) => {
-    setIsLoading(true);
+  useEffect(() => {
+    if (!user || user.debeCambiarPassword || user.rol === 'VALIDADOR_BOLETOS') return;
+    let active = true; const epoch = generation.current;
+    api.getPerfil(user.id).then(perfil => {
+      if (active && epoch === generation.current && api.getAccessToken()) guardar({ ...user, nombre: [perfil.usuario.nombre, perfil.usuario.apellido].filter(Boolean).join(' '), email: perfil.usuario.email, rol: perfil.usuario.rol, debeCambiarPassword: perfil.usuario.debeCambiarPassword });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [user?.id]);
+  const login = async (email: string, password: string) => {
+    setLoading(true); const epoch = ++generation.current;
     try {
-      const res = await api.login(email, pass);
-      const rolFromToken = parseJwtRole(res.accessToken);
-
-      let nombreUsuario = email.split('@')[0];
-      let rolUsuario = rolFromToken;
-
-      try {
-        const perfil = await api.getPerfil(res.usuarioId);
-        if (perfil && perfil.usuario) {
-          const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
-          if (nombreCompleto) nombreUsuario = nombreCompleto;
-          if (perfil.usuario.rol) rolUsuario = perfil.usuario.rol as RolUsuario;
-        }
-      } catch {
-        // En caso de fallo de red en perfil, conservamos rol decodificado del JWT
-      }
-
-      const sesion: UsuarioSesion = {
-        id: res.usuarioId,
-        nombre: nombreUsuario,
-        email: email,
-        rol: rolUsuario,
-        debeCambiarPassword: res.debeCambiarPassword,
-      };
-      setUser(sesion);
-      localStorage.setItem('promotora_user', JSON.stringify(sesion));
-    } finally {
-      setIsLoading(false);
-    }
+      const result = await api.login(email, password); const rol = role(result.accessToken);
+      if (!rol) { api.setTokens(null, null); throw { detail: 'El servidor devolvió una sesión con rol desconocido.' }; }
+      if (epoch !== generation.current) return;
+      guardar({ id: result.usuarioId, nombre: email, email, rol, debeCambiarPassword: result.debeCambiarPassword });
+    } finally { setLoading(false); }
   };
-
-  const registro = async (datos: any) => {
-    setIsLoading(true);
-    try {
-      await api.registro(datos);
-      await login(datos.email, datos.password);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const logout = async () => {
-    await api.logout();
-    setUser(null);
-    localStorage.removeItem('promotora_user');
-  };
-
+  const registro = async (datos: Registro) => { await api.registro(datos); await login(datos.email, datos.password); };
+  const logout = async () => { generation.current++; guardar(null); await api.logout(); };
   const cambiarPassword = async (actual: string, nueva: string) => {
     if (!user) return;
-    await api.cambiarPassword(actual, nueva, user.id);
-    const updated = { ...user, debeCambiarPassword: false };
-    setUser(updated);
-    localStorage.setItem('promotora_user', JSON.stringify(updated));
+    await api.cambiarPassword(actual, nueva, user.id); await logout();
   };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: !!user,
-        debeCambiarPassword: user?.debeCambiarPassword || false,
-        isLoading,
-        login,
-        registro,
-        logout,
-        cambiarPassword,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth debe usarse dentro de AuthProvider');
-  return ctx;
-};
+  return <AuthContext.Provider value={{ user, isAuthenticated: !!user, debeCambiarPassword: !!user?.debeCambiarPassword, isLoading, login, registro, logout, cambiarPassword }}>{children}</AuthContext.Provider>;
+}
+export function useAuth() { const value = useContext(AuthContext); if (!value) throw new Error('useAuth requiere AuthProvider'); return value; }

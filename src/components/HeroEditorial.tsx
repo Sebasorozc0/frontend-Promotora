@@ -2,6 +2,7 @@ import React from 'react';
 import { Search, Sparkles, Shield, Zap, Ticket } from 'lucide-react';
 
 interface HeroEditorialProps {
+  categorias: { id: number | null; nombre: string }[];
   busqueda: string;
   setBusqueda: (val: string) => void;
   categoriaActiva: number | null;
@@ -10,19 +11,13 @@ interface HeroEditorialProps {
 }
 
 export const HeroEditorial: React.FC<HeroEditorialProps> = ({
+  categorias,
   busqueda,
   setBusqueda,
   categoriaActiva,
   setCategoriaActiva,
   onOpenJose,
 }) => {
-  const categorias = [
-    { id: null, nombre: 'TODOS LOS EVENTOS' },
-    { id: 1, nombre: 'CONCIERTOS' },
-    { id: 5, nombre: 'CARRERAS 10K/21K' },
-    { id: 2, nombre: 'CULTURA & TEATRO' },
-    { id: 3, nombre: 'CULTOS & VIGILIAS' },
-  ];
 
   return (
     <section style={{

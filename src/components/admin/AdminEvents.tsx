@@ -1,6 +1,8 @@
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import React, { useState, useEffect } from 'react';
-import { api, MOCK_EVENTOS } from '../../api/client';
-import { EventoCatalogo, CategoriaDetalleDto, RecintoPublico, LocalidadMapa } from '../../types/api';
+import { api } from '../../api/client';
+import { EstadoEvento, EventoCatalogo, CategoriaDetalleDto, RecintoPublico, LocalidadMapa } from '../../types/api';
 import { Modal } from '../common/Modal';
 import { 
   Calendar, 
@@ -19,7 +21,32 @@ import {
   ArrowRight
 } from 'lucide-react';
 
+function localDate(value?: string) { if (!value) return ''; const d = new Date(value); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+
+const transiciones: Record<EstadoEvento, EstadoEvento[]> = {
+  BORRADOR: ['PROGRAMADO', 'CANCELADO'],
+  PROGRAMADO: ['EN_VENTA', 'CANCELADO'],
+  EN_VENTA: ['AGOTADO', 'FINALIZADO', 'CANCELADO'],
+  AGOTADO: ['EN_VENTA', 'FINALIZADO', 'CANCELADO'],
+  FINALIZADO: [],
+  CANCELADO: [],
+};
+
+function impedimento(evento: EventoCatalogo, destino: EstadoEvento) {
+  const ahora = Date.now();
+  if (destino === 'FINALIZADO' && ahora < Date.parse(evento.fechaFin || evento.fechaInicio)) {
+    return `Puedes finalizar el evento después del ${new Date(evento.fechaFin || evento.fechaInicio).toLocaleString('es-GT')}.`;
+  }
+  if (destino === 'EN_VENTA') {
+    if (!evento.fechaInicioVenta || !evento.fechaFinVenta) return 'Configura las fechas de apertura y cierre de venta al editar el evento.';
+    if (ahora < Date.parse(evento.fechaInicioVenta) || ahora >= Date.parse(evento.fechaFinVenta)) return 'La fecha actual debe estar dentro del período de venta configurado.';
+  }
+  return '';
+}
+
 export const AdminEvents: React.FC = () => {
+  const navigate = useNavigate(); const { user } = useAuth();
+  const base = user?.rol === 'DUENO_RECINTO' ? '/dueno' : '/gestion';
   const [eventos, setEventos] = useState<EventoCatalogo[]>([]);
   const [recintos, setRecintos] = useState<RecintoPublico[]>([]);
   const [categorias, setCategorias] = useState<CategoriaDetalleDto[]>([]);
@@ -32,7 +59,9 @@ export const AdminEvents: React.FC = () => {
   const [editingEvento, setEditingEvento] = useState<EventoCatalogo | null>(null);
   const [estadoModalOpen, setEstadoModalOpen] = useState(false);
   const [selectedEventoParaEstado, setSelectedEventoParaEstado] = useState<EventoCatalogo | null>(null);
-  const [nuevoEstadoSeleccionado, setNuevoEstadoSeleccionado] = useState<string>('PUBLICADO');
+  const [nuevoEstadoSeleccionado, setNuevoEstadoSeleccionado] = useState<EstadoEvento | ''>('');
+  const [errorEstado, setErrorEstado] = useState('');
+  const [guardandoEstado, setGuardandoEstado] = useState(false);
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [selectedEventoParaImagen, setSelectedEventoParaImagen] = useState<EventoCatalogo | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -99,14 +128,9 @@ export const AdminEvents: React.FC = () => {
   const fetchEventos = async () => {
     setLoading(true);
     try {
-      const res = await api.getEventos({ pageSize: 100 });
-      if (res && res.items && res.items.length > 0) {
-        setEventos(res.items);
-      } else {
-        setEventos(MOCK_EVENTOS);
-      }
-    } catch {
-      setEventos(MOCK_EVENTOS);
+      setEventos(await api.getEventosAdmin());
+    } catch (error: any) {
+      showFeedback(error?.detail || 'No se pudieron cargar los eventos.', 'error');
     } finally {
       setLoading(false);
     }
@@ -135,17 +159,19 @@ export const AdminEvents: React.FC = () => {
     setEventoModalOpen(true);
   };
 
-  const handleOpenEditEvento = (ev: EventoCatalogo) => {
+  const handleOpenEditEvento = async (selected: EventoCatalogo) => {
+    let ev: EventoCatalogo;
+    try { ev = await api.getEventoAdmin(selected.id); } catch (err: any) { showFeedback(err.detail, "error"); return; }
     setEditingEvento(ev);
     setEventoForm({
       recintoId: ev.recintoId,
       categoriaId: ev.categoriaId,
       nombre: ev.titulo,
       descripcion: ev.descripcion,
-      fechaInicio: ev.fechaInicio ? ev.fechaInicio.substring(0, 16) : '',
-      fechaFin: ev.fechaFin ? ev.fechaFin.substring(0, 16) : '',
-      fechaInicioVenta: '',
-      fechaFinVenta: '',
+      fechaInicio: localDate(ev.fechaInicio),
+      fechaFin: localDate(ev.fechaFin),
+      fechaInicioVenta: localDate(ev.fechaInicioVenta),
+      fechaFinVenta: localDate(ev.fechaFinVenta),
       maxBoletosPorCompra: ev.maxBoletosPorCompra || 6,
       imagenUrl: ev.imagenFlyerUrl || ''
     });
@@ -196,13 +222,18 @@ export const AdminEvents: React.FC = () => {
   // --- TRANSICIÓN DE ESTADO ---
   const handleOpenEstado = (ev: EventoCatalogo) => {
     setSelectedEventoParaEstado(ev);
-    setNuevoEstadoSeleccionado((ev.estado as string) === 'BORRADOR' ? 'PROGRAMADO' : (ev.estado as string) === 'PROGRAMADO' ? 'EN_VENTA' : 'FINALIZADO');
+    setNuevoEstadoSeleccionado('');
+    setErrorEstado('');
     setEstadoModalOpen(true);
   };
 
   const handleCambiarEstado = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEventoParaEstado) return;
+    if (!selectedEventoParaEstado || !nuevoEstadoSeleccionado || guardandoEstado) return;
+    const motivo = impedimento(selectedEventoParaEstado, nuevoEstadoSeleccionado);
+    if (motivo) { setErrorEstado(motivo); return; }
+    setErrorEstado('');
+    setGuardandoEstado(true);
     try {
       await api.actualizarEstadoEvento(
         selectedEventoParaEstado.id, 
@@ -213,7 +244,10 @@ export const AdminEvents: React.FC = () => {
       setEstadoModalOpen(false);
       fetchEventos();
     } catch (err: any) {
-      showFeedback(err?.detail || 'Error en la transición de estado.', 'error');
+      setErrorEstado(err?.status === 409 ? `${err.detail} Cierra la ventana y actualiza la lista de eventos.` : err?.detail || 'No se pudo cambiar el estado.');
+      if (err?.status === 409) void fetchEventos();
+    } finally {
+      setGuardandoEstado(false);
     }
   };
 
@@ -300,6 +334,7 @@ export const AdminEvents: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div className="onboarding-strip"><div><strong>¿Vas a organizar un nuevo evento?</strong><p>Créalo con datos, entradas y plano de mesas o sillas en cuatro pasos.</p></div><button className="btn btn-primary" onClick={() => navigate(base + '/nuevo-evento')}>+ Crear evento paso a paso</button></div>
       {/* Toast Feedback */}
       {feedback && (
         <div style={{
@@ -323,7 +358,7 @@ export const AdminEvents: React.FC = () => {
         <div>
           <h3 style={{ fontSize: '1.4rem' }}>Gestión Integral de Eventos</h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Ciclo de vida del espectáculo: BORRADOR → PUBLICADO → EN_VENTA → FINALIZADO.
+            Ciclo de vida del espectáculo: BORRADOR → PROGRAMADO → EN_VENTA → FINALIZADO.
           </p>
         </div>
 
@@ -348,13 +383,13 @@ export const AdminEvents: React.FC = () => {
           >
             <option value="TODOS">Todos los Estados</option>
             <option value="BORRADOR">BORRADOR</option>
-            <option value="PUBLICADO">PUBLICADO</option>
+            <option value="PROGRAMADO">PROGRAMADO</option>
             <option value="EN_VENTA">EN VENTA</option>
             <option value="FINALIZADO">FINALIZADO</option>
             <option value="CANCELADO">CANCELADO</option>
           </select>
 
-          <button onClick={handleOpenCreateEvento} className="btn btn-primary btn-sm">
+          <button onClick={() => navigate(base + '/nuevo-evento')} className="btn btn-primary btn-sm">
             <Plus size={16} /> Crear Evento
           </button>
         </div>
@@ -395,7 +430,7 @@ export const AdminEvents: React.FC = () => {
               <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '6px' }}>
                 <span className={`badge ${
                   ev.estado === 'EN_VENTA' ? 'badge-valido' :
-                  (ev.estado as string) === 'PROGRAMADO' ? 'badge-completada' : (ev.estado as string) === 'PUBLICADO' ? 'badge-completada' :
+                  (ev.estado as string) === 'PROGRAMADO' ? 'badge-completada' : (ev.estado as string) === 'PROGRAMADO' ? 'badge-completada' :
                   ev.estado === 'BORRADOR' ? 'badge-pendiente' : 'badge-anulado'
                 }`}>
                   {ev.estado}
@@ -445,6 +480,7 @@ export const AdminEvents: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '6px' }}>
+                  {['BORRADOR','PROGRAMADO'].includes(ev.estado) && <button className="btn btn-sm btn-primary" onClick={() => navigate(base + '/nuevo-evento?evento=' + ev.id)}>Continuar preparación</button>}
                   <button
                     onClick={() => handleOpenEditEvento(ev)}
                     className="btn btn-sm btn-outline"
@@ -607,15 +643,17 @@ export const AdminEvents: React.FC = () => {
 
             <div>
               <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, marginBottom: '6px' }}>
-                URL Imagen Flyer (Opcional)
+                Dirección del flyer (opcional)
               </label>
               <input
-                type="url"
+                type="text"
+                maxLength={255}
                 value={eventoForm.imagenUrl}
                 onChange={(e) => setEventoForm({ ...eventoForm, imagenUrl: e.target.value })}
                 className="input-base"
-                placeholder="https://..."
+                placeholder="Ruta de una imagen cargada o enlace https://…"
               />
+              <small>Si ya subiste un flyer, conserva la ruta que aparece aquí.</small>
             </div>
           </div>
 
@@ -646,7 +684,7 @@ export const AdminEvents: React.FC = () => {
       {/* --- MODAL TRANSICIÓN DE ESTADO --- */}
       <Modal
         isOpen={estadoModalOpen}
-        onClose={() => setEstadoModalOpen(false)}
+        onClose={() => { if (!guardandoEstado) setEstadoModalOpen(false); }}
         title="Cambiar Estado del Evento"
         maxWidth="460px"
       >
@@ -664,24 +702,27 @@ export const AdminEvents: React.FC = () => {
             </label>
             <select
               value={nuevoEstadoSeleccionado}
-              onChange={(e) => setNuevoEstadoSeleccionado(e.target.value)}
+              onChange={(e) => { setNuevoEstadoSeleccionado(e.target.value as EstadoEvento | ''); setErrorEstado(''); }}
+              disabled={guardandoEstado}
               className="input-base"
               style={{ fontWeight: 700 }}
             >
-              <option value="BORRADOR">BORRADOR (En diseño, no visible)</option>
-              <option value="PROGRAMADO">PROGRAMADO (Visible en cartelera)</option>
-              <option value="EN_VENTA">EN VENTA (Permite compras y reservas)</option>
-              <option value="FINALIZADO">FINALIZADO (Evento concluido)</option>
-              <option value="CANCELADO">CANCELADO (Cancelación oficial)</option>
+              <option value="">Elige qué quieres hacer</option>
+              {selectedEventoParaEstado && transiciones[selectedEventoParaEstado.estado].map(estado => (
+                <option key={estado} value={estado}>{estado.replace('_', ' ')}</option>
+              ))}
             </select>
+            {selectedEventoParaEstado && !transiciones[selectedEventoParaEstado.estado].length && <p>Este estado es definitivo.</p>}
           </div>
+          {selectedEventoParaEstado && nuevoEstadoSeleccionado && impedimento(selectedEventoParaEstado, nuevoEstadoSeleccionado) && <p className="notice">{impedimento(selectedEventoParaEstado, nuevoEstadoSeleccionado)}</p>}
+          {errorEstado && <p className="notice" role="alert">{errorEstado}</p>}
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-            <button type="button" onClick={() => setEstadoModalOpen(false)} className="btn btn-outline" style={{ flex: 1 }}>
+            <button type="button" disabled={guardandoEstado} onClick={() => setEstadoModalOpen(false)} className="btn btn-outline" style={{ flex: 1 }}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-              Confirmar Transición
+            <button type="submit" disabled={guardandoEstado || !nuevoEstadoSeleccionado || !!(selectedEventoParaEstado && impedimento(selectedEventoParaEstado, nuevoEstadoSeleccionado))} className="btn btn-primary" style={{ flex: 1 }}>
+              {guardandoEstado ? 'Guardando…' : 'Confirmar transición'}
             </button>
           </div>
         </form>
@@ -885,7 +926,9 @@ export const AdminEvents: React.FC = () => {
                       Q{(t.precioUnitario ?? t.precio ?? 0).toFixed(2)}
                     </div>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
+                        try {
+                        t = await api.getTipoEntrada(selectedEventoParaEntradas!.id, t.id);
                         setEditingTipoEntrada(t);
                         setTipoEntradaForm({
                           nombre: t.nombre,
@@ -894,6 +937,7 @@ export const AdminEvents: React.FC = () => {
                           localidadId: t.localidadId
                         });
                         setTipoEntradaFormOpen(true);
+                        } catch (err: any) { showFeedback(err.detail, "error"); }
                       }}
                       className="btn btn-sm btn-outline"
                       title="Editar entrada"

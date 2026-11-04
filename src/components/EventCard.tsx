@@ -113,7 +113,7 @@ export const EventCard: React.FC<EventCardProps> = ({ evento, onSelect, onVerMap
               Desde
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
-              Q{(evento.precioMinimo ?? 0).toFixed(2)}
+              {evento.cupoTotal ? 'Q' + evento.precioMinimo.toFixed(2) : 'Ver tarifas'}
             </div>
           </div>
 
@@ -122,7 +122,7 @@ export const EventCard: React.FC<EventCardProps> = ({ evento, onSelect, onVerMap
               Cupo libre
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 600 }}>
-              {(evento.cupoDisponible ?? 0).toLocaleString()} boletos
+              {evento.cupoTotal ? evento.cupoDisponible.toLocaleString() + ' boletos' : 'Consultar detalle'}
             </div>
           </div>
         </div>

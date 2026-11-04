@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, MOCK_RESENAS } from '../../api/client';
+import { api } from '../../api/client';
 import { ResenaPublica } from '../../types/api';
 import { Modal } from '../common/Modal';
 import { 
@@ -49,10 +49,10 @@ export const AdminReviews: React.FC = () => {
       if (res && res.items) {
         setResenasCola(res.items);
       } else {
-        setResenasCola(MOCK_RESENAS);
+        setResenasCola([]);
       }
     } catch {
-      setResenasCola(MOCK_RESENAS);
+      setResenasCola([]);
     } finally {
       setLoading(false);
     }
@@ -85,11 +85,7 @@ export const AdminReviews: React.FC = () => {
         prev.map((r) => (r.id === id ? { ...r, estado: decision } : r))
       );
     } catch (err: any) {
-      // Fallback local en caso de simulación
-      setResenasCola((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, estado: decision } : r))
-      );
-      showFeedback(`Reseña #${id} moderada a ${decision}.`);
+      showFeedback(err.detail || 'No se pudo moderar la reseña.', 'error');
     }
   };
 
@@ -180,12 +176,7 @@ export const AdminReviews: React.FC = () => {
           >
             <ShieldCheck size={14} /> Cola de Moderación Admin
           </button>
-          <button
-            onClick={() => setSubTab('MIS_RESENAS')}
-            className={`btn btn-sm ${subTab === 'MIS_RESENAS' ? 'btn-inverse' : 'btn-outline'}`}
-          >
-            <User size={14} /> Mis Reseñas de Autor ({misResenas.length})
-          </button>
+
         </div>
 
         {subTab === 'COLA_MODERACION' && (
@@ -285,14 +276,7 @@ export const AdminReviews: React.FC = () => {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    {r.estado === 'RECHAZADA' && (
-                      <button
-                        onClick={() => handleModerar(r.id, 'APROBADA')}
-                        className="btn btn-sm btn-outline"
-                      >
-                        <RotateCcw size={14} /> Reconsiderar y Aprobar
-                      </button>
-                    )}
+                    <span>Solo las reseñas PENDIENTE admiten moderación.</span>
                     {r.estado === 'APROBADA' && (
                       <button
                         onClick={() => handleModerar(r.id, 'RECHAZADA')}

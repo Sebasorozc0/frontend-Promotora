@@ -8,18 +8,20 @@ interface TicketCardProps {
 }
 
 export const TicketCard: React.FC<TicketCardProps> = ({ boleto }) => {
+  const [qrError, setQrError] = React.useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
+    setQrError(false);
     if (canvasRef.current) {
       QRCode.toCanvas(canvasRef.current, boleto.codigoQr, {
-        width: 140,
-        margin: 1,
+        width: 220,
+        margin: 4,
         color: {
           dark: '#121316',
           light: '#FFFFFF',
         },
-      }).catch((err) => console.error(err));
+      }).catch(() => setQrError(true));
     }
   }, [boleto.codigoQr]);
 
@@ -92,6 +94,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ boleto }) => {
         }}>
           <div>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>TIPO DE ENTRADA</div>
+            {boleto.localidadNombre && <p>{boleto.localidadNombre}</p>}
             <div style={{ fontWeight: 700 }}>{boleto.tipoEntradaNombre}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -108,6 +111,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ boleto }) => {
         <div className="ticket-notch-right" />
       </div>
 
+<p className="helper-text" style={{ padding: "0 20px" }}>Este boleto está guardado en tu cuenta. No compartas su código fuera del personal autorizado.</p>
       {/* Bottom QR Section */}
       <div style={{
         padding: '20px',
@@ -124,13 +128,15 @@ export const TicketCard: React.FC<TicketCardProps> = ({ boleto }) => {
           boxShadow: 'var(--shadow-crisp-sm)',
           marginBottom: '10px'
         }}>
-          <canvas ref={canvasRef} />
+          <canvas ref={canvasRef} aria-label="Código QR de esta entrada" />
+          {qrError && <p role="alert">No se pudo dibujar el QR. Usa Copiar código de acceso o vuelve a abrir el boleto.</p>}
         </div>
 
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--text-muted)', maxWidth: '280px', wordBreak: 'break-all' }}>
-          TOKEN HMAC: {boleto.codigoQr.substring(0, 24)}...
+          Presenta este QR al ingresar. Cada boleto permite un solo acceso.
         </div>
 
+        <div className="actions"><button className="btn btn-sm btn-outline" onClick={async () => { try { await navigator.clipboard.writeText(boleto.codigoQr); alert('Código copiado para validar. Compártelo solo con el personal de acceso.'); } catch { alert('No se pudo copiar. Puedes utilizar el QR del boleto.'); } }}>Copiar código de acceso</button><button className="btn btn-sm btn-outline" onClick={() => { const canvas = canvasRef.current; if (!canvas) return; const link = document.createElement('a'); link.href = canvas.toDataURL('image/png'); link.download = 'boleto-' + boleto.id + '.png'; link.click(); }}>Descargar QR</button></div>
         {isUsado && (
           <div style={{
             marginTop: '8px',

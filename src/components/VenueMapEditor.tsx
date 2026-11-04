@@ -1,5 +1,6 @@
+import { useAuth } from '../context/AuthContext';
 import React, { useState, useRef, useEffect } from 'react';
-import { api, MOCK_RECINTOS } from '../api/client';
+import { api } from '../api/client';
 import { RecintoPublico, LocalidadMapa, DatosLocalidadRequest, PoligonoGeo } from '../types/api';
 import { 
   Upload, 
@@ -41,6 +42,9 @@ export const VenueMapEditor: React.FC = () => {
 
   // Modal para crear nuevo recinto
   const [isCrearRecintoModalOpen, setIsCrearRecintoModalOpen] = useState<boolean>(false);
+  const { user } = useAuth();
+  const [editingRecinto, setEditingRecinto] = useState<any>(null);
+  const [duenoRecintoId, setDuenoRecintoId] = useState('');
   const [nuevoRecintoNombre, setNuevoRecintoNombre] = useState<string>('');
   const [nuevoRecintoCiudad, setNuevoRecintoCiudad] = useState<string>('Ciudad de Guatemala');
   const [nuevoRecintoDireccion, setNuevoRecintoDireccion] = useState<string>('');
@@ -101,11 +105,12 @@ export const VenueMapEditor: React.FC = () => {
     if (!recintoId) return;
     setIsLoading(true);
     try {
-      const mapa = await api.getMapaRecinto(recintoId);
+      const recinto = await api.getRecinto(recintoId);
+      const mapa = { ...recinto, localidades: await api.getLocalidades(recintoId) };
       setLocalidades(mapa.localidades || []);
       setImagenPlano(mapa.imagenPlanoUrl || '/venue_blueprint.jpg');
     } catch (err) {
-      console.warn('Error cargando mapa, usando fallback.', err);
+      setLocalidades([]); alert((err as any).detail || 'No se pudo cargar el recinto.');
     } finally {
       setIsLoading(false);
     }
@@ -119,12 +124,16 @@ export const VenueMapEditor: React.FC = () => {
     }
     setIsGuardandoRecinto(true);
     try {
-      const creado = await api.crearRecinto({
+      const payload = {
         nombre: nuevoRecintoNombre.trim(),
         ciudad: nuevoRecintoCiudad.trim() || undefined,
         direccion: nuevoRecintoDireccion.trim() || undefined,
-        capacidadTotal: Number(nuevoRecintoCapacidad) || 15000,
-      });
+        capacidadTotal: Number(nuevoRecintoCapacidad),
+        duenoId: user?.rol === 'ADMINISTRADOR' ? Number(duenoRecintoId) || undefined : undefined,
+        latitud: editingRecinto?.latitud ?? null, longitud: editingRecinto?.longitud ?? null,
+        imagenPlanoUrl: editingRecinto?.imagenPlanoUrl ?? null,
+      };
+      const creado = editingRecinto ? await api.actualizarRecinto(editingRecinto.id, payload) : await api.crearRecinto(payload);
       mostrarFeedback(`¡Recinto "${creado.nombre}" registrado con éxito!`, 'success');
       setIsCrearRecintoModalOpen(false);
       setNuevoRecintoNombre('');
@@ -257,15 +266,14 @@ export const VenueMapEditor: React.FC = () => {
         // Crear nueva
         const creada = await api.crearLocalidad(selectedRecintoId, payload);
         const nuevaLoc: LocalidadMapa = {
-          id: creada.id || Math.floor(Math.random() * 9000) + 1000,
+          id: creada.id,
           recintoId: selectedRecintoId,
           nombre: payload.nombre,
           capacidad: payload.capacidad,
           color: payload.color,
           colorHex: payload.color,
           geometria: payload.geometria,
-          cupoDisponible: payload.capacidad,
-          precioMinimo: 350.0,
+
           activo: true,
         };
         setLocalidades((prev) => [...prev, nuevaLoc]);
@@ -358,6 +366,7 @@ export const VenueMapEditor: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {selectedRecintoId > 0 && <div className="actions"><button className="btn btn-outline" onClick={async () => { try { const r: any = await api.getRecinto(selectedRecintoId); setEditingRecinto(r); setNuevoRecintoNombre(r.nombre); setNuevoRecintoCiudad(r.ciudad || ''); setNuevoRecintoDireccion(r.direccion || ''); setNuevoRecintoCapacidad(r.capacidadTotal); setDuenoRecintoId(String(r.duenoId)); setIsCrearRecintoModalOpen(true); } catch (e: any) { alert(e.detail); } }}>Editar recinto</button><button className="btn btn-outline" onClick={async () => { if (!confirm('¿Dar de baja el recinto seleccionado?')) return; try { await api.eliminarRecinto(selectedRecintoId); await cargarRecintos(); } catch (e: any) { alert(e.detail); } }}>Dar de baja recinto</button></div>}
       {/* Barra de Notificaciones Feedback */}
       {feedbackMsg && (
         <div style={{
@@ -427,7 +436,7 @@ export const VenueMapEditor: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setIsCrearRecintoModalOpen(true)}
+                onClick={() => { setEditingRecinto(null); setNuevoRecintoNombre(''); setNuevoRecintoDireccion(''); setDuenoRecintoId(''); setIsCrearRecintoModalOpen(true); }}
                 className="btn btn-outline"
                 style={{ gap: '6px', whiteSpace: 'nowrap' }}
                 title="Registrar un nuevo recinto"
@@ -1009,7 +1018,8 @@ export const VenueMapEditor: React.FC = () => {
               return (
                 <div
                   key={loc.id}
-                  onClick={() => {
+                  onClick={async () => {
+                    try { loc = await api.getLocalidad(selectedRecintoId, loc.id); } catch (e: any) { alert(e.detail); return; }
                     setSelectedLocalidad(loc);
                     setNombreLocalidad(loc.nombre);
                     setCapacidadLocalidad(loc.capacidad);
@@ -1085,6 +1095,7 @@ export const VenueMapEditor: React.FC = () => {
             </div>
 
             <form onSubmit={handleCrearRecinto} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {user?.rol === 'ADMINISTRADOR' && !editingRecinto && <label>ID del perfil dueño (no ID de usuario)<input required type="number" min="1" value={duenoRecintoId} onChange={e => setDuenoRecintoId(e.target.value)} /><small>El dueño puede crear su recinto desde su propia sesión sin proporcionar este ID.</small></label>}
               <div>
                 <label className="form-label">Nombre del Recinto *</label>
                 <input
@@ -1149,7 +1160,7 @@ export const VenueMapEditor: React.FC = () => {
                   style={{ gap: '6px' }}
                 >
                   {isGuardandoRecinto ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={16} />}
-                  Crear Recinto
+                  {editingRecinto ? 'Guardar cambios' : 'Crear recinto'}
                 </button>
               </div>
             </form>

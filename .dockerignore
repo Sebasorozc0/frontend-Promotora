@@ -1,0 +1,12 @@
+**
+!src/
+!src/**
+!public/
+!public/**
+!package.json
+!package-lock.json
+!index.html
+!tsconfig*.json
+!vite.config.ts
+!deploy/
+!deploy/default.conf.template

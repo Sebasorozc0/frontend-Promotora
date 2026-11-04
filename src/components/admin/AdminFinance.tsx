@@ -1,3 +1,4 @@
+import { useAuth } from '../../context/AuthContext';
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { CuentaFinancieraDto, MovimientoFinancieroDto, TipoCuenta, EstadoCuenta, TipoMovimiento } from '../../types/api';
@@ -19,6 +20,10 @@ import {
 } from 'lucide-react';
 
 export const AdminFinance: React.FC = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.rol === 'ADMINISTRADOR';
+  const [moneda, setMoneda] = useState('GTQ');
+  const [claveLiquidacion] = useState(() => ({ firma: '', key: '' }));
   const [cuentas, setCuentas] = useState<CuentaFinancieraDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
@@ -63,7 +68,8 @@ export const AdminFinance: React.FC = () => {
     fetchCuentas();
   }, []);
 
-  const handleOpenMovimientos = async (cuenta: CuentaFinancieraDto) => {
+  const handleOpenMovimientos = async (selected: CuentaFinancieraDto) => {
+    let cuenta: CuentaFinancieraDto; try { cuenta = await api.getCuenta(selected.id); } catch (e: any) { showFeedback(e.detail, "error"); return; }
     setSelectedCuentaParaMovimientos(cuenta);
     setLoadingMovimientos(true);
     try {
@@ -87,7 +93,10 @@ export const AdminFinance: React.FC = () => {
 
     setLiquidando(true);
     try {
-      await api.liquidarCuenta(selectedCuentaParaLiquidar.id, montoLiquidar);
+      const firma = selectedCuentaParaLiquidar.id + ':' + montoLiquidar;
+      if (claveLiquidacion.firma !== firma) { claveLiquidacion.firma = firma; claveLiquidacion.key = crypto.randomUUID(); }
+      await api.liquidarCuenta(selectedCuentaParaLiquidar.id, montoLiquidar, claveLiquidacion.key);
+      claveLiquidacion.firma = ''; claveLiquidacion.key = '';
       showFeedback(`Liquidación por Q${montoLiquidar.toFixed(2)} procesada exitosamente con Idempotency-Key.`);
       setSelectedCuentaParaLiquidar(null);
       fetchCuentas();
@@ -121,7 +130,7 @@ export const AdminFinance: React.FC = () => {
     setReembolsando(true);
     try {
       await api.reembolsarCompra(publicIdReembolso.trim());
-      showFeedback(`Compra ${publicIdReembolso} reembolsada exitosamente. Boletos revertidos a ANULADO.`);
+      showFeedback(`Compra ${publicIdReembolso} reembolsada exitosamente. Se anulan los boletos válidos; los usados conservan su historial.`);
       setReembolsoModalOpen(false);
       setPublicIdReembolso('');
       fetchCuentas();
@@ -134,7 +143,7 @@ export const AdminFinance: React.FC = () => {
 
   // Métricas calculadas
   const saldoPlataforma = cuentas
-    .filter((c) => c.tipo === 'PLATAFORMA')
+    .filter((c) => c.moneda === moneda && c.tipo === 'PLATAFORMA')
     .reduce((acc, c) => acc + c.saldo, 0);
 
   const saldoDuenos = cuentas
@@ -148,7 +157,7 @@ export const AdminFinance: React.FC = () => {
   const cuentasFiltradas = cuentas.filter((c) => {
     const coincideTipo = filtroTipo === 'TODOS' || c.tipo === filtroTipo;
     const coincideEstado = filtroEstado === 'TODOS' || c.estado === filtroEstado;
-    return coincideTipo && coincideEstado;
+    return coincideTipo && coincideEstado && c.moneda === moneda;
   });
 
   const movimientosFiltrados = movimientos.filter((m) =>
@@ -175,6 +184,7 @@ export const AdminFinance: React.FC = () => {
         </div>
       )}
 
+      <label>Moneda de las cuentas y totales<select value={moneda} onChange={e => setMoneda(e.target.value)}>{[...new Set(['GTQ', ...cuentas.map(c => c.moneda)])].map(m => <option key={m}>{m}</option>)}</select></label>
       {/* Tarjetas de Resumen Contable */}
       <div style={{
         display: 'grid',
@@ -194,7 +204,7 @@ export const AdminFinance: React.FC = () => {
             <TrendingUp size={18} color="var(--accent-emerald)" />
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-emerald)' }}>
-            Q{saldoPlataforma.toFixed(2)}
+            {moneda} {saldoPlataforma.toFixed(2)}
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
             Ingresos netos por comisión de boletaje
@@ -214,7 +224,7 @@ export const AdminFinance: React.FC = () => {
             <Building2 size={18} color="var(--accent-cobalt)" />
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-cobalt)' }}>
-            Q{saldoDuenos.toFixed(2)}
+            {moneda} {saldoDuenos.toFixed(2)}
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
             Disponible para liquidación a promotores
@@ -234,7 +244,7 @@ export const AdminFinance: React.FC = () => {
             <DollarSign size={18} color="var(--accent-amber)" />
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-amber)' }}>
-            Q{saldoImpuestos.toFixed(2)}
+            {moneda} {saldoImpuestos.toFixed(2)}
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
             Retenciones fiscales aplicadas por ley
@@ -279,7 +289,8 @@ export const AdminFinance: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setReembolsoModalOpen(true)}
+          disabled={!isAdmin}
+            onClick={() => setReembolsoModalOpen(true)}
           className="btn btn-sm btn-outline"
           style={{ color: 'var(--accent-vermilion)', borderColor: 'var(--accent-vermilion)' }}
         >
@@ -321,7 +332,7 @@ export const AdminFinance: React.FC = () => {
               </h4>
 
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                Moneda: <strong>{c.moneda}</strong> · Creada: {new Date(c.fechaCreacion).toLocaleDateString('es-GT')}
+                Moneda: <strong>{c.moneda}</strong>
               </div>
 
               <div style={{
@@ -337,7 +348,7 @@ export const AdminFinance: React.FC = () => {
                   Saldo Actual
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.4rem', fontWeight: 800, color: c.saldo > 0 ? 'var(--accent-emerald)' : 'var(--text-primary)' }}>
-                  Q{c.saldo.toFixed(2)}
+                  {moneda} {c.saldo.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -351,7 +362,7 @@ export const AdminFinance: React.FC = () => {
                 <FileText size={14} /> Extracto
               </button>
 
-              {c.tipo === 'DUENO' && c.estado === 'ACTIVA' && (
+              {isAdmin && c.tipo === 'DUENO' && c.estado === 'ACTIVA' && (
                 <button
                   onClick={() => {
                     setSelectedCuentaParaLiquidar(c);
@@ -402,7 +413,7 @@ export const AdminFinance: React.FC = () => {
                 Titular / Empresa: <strong>{selectedCuentaParaMovimientos?.empresa || selectedCuentaParaMovimientos?.duenoNombre || selectedCuentaParaMovimientos?.tipo}</strong>
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                Saldo Conciliado: <strong style={{ color: 'var(--accent-emerald)' }}>Q{selectedCuentaParaMovimientos?.saldo.toFixed(2)}</strong>
+                Saldo Conciliado: <strong style={{ color: 'var(--accent-emerald)' }}>{moneda} {selectedCuentaParaMovimientos?.saldo.toFixed(2)}</strong>
               </div>
             </div>
 
@@ -474,7 +485,7 @@ export const AdminFinance: React.FC = () => {
                       {m.monto >= 0 ? `+Q${m.monto.toFixed(2)}` : `-Q${Math.abs(m.monto).toFixed(2)}`}
                     </div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Saldo: Q{m.saldoPosterior.toFixed(2)}
+                      Compra: {(m as any).compraId || 'Sin compra'}
                     </div>
                   </div>
                 </div>
@@ -510,7 +521,7 @@ export const AdminFinance: React.FC = () => {
             fontFamily: 'var(--font-mono)',
             fontSize: '0.85rem'
           }}>
-            Saldo Disponible para Liquidación: <strong>Q{selectedCuentaParaLiquidar?.saldo.toFixed(2)}</strong>
+            Saldo Disponible para Liquidación: <strong>{moneda} {selectedCuentaParaLiquidar?.saldo.toFixed(2)}</strong>
           </div>
 
           <div>

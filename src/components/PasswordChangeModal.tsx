@@ -16,7 +16,7 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [exitoMsg, setExitoMsg] = useState<string | null>(null);
 
-  const esVisible = isOpen !== undefined ? isOpen : debeCambiarPassword;
+  const esVisible = debeCambiarPassword || !!isOpen;
   if (!esVisible) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,8 +25,8 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
       setErrorMsg('Las contraseñas nuevas no coinciden.');
       return;
     }
-    if (nueva.length < 8) {
-      setErrorMsg('La contraseña nueva debe tener al menos 8 caracteres.');
+    if (nueva.length < 12) {
+      setErrorMsg('La contraseña nueva debe tener al menos 12 caracteres.');
       return;
     }
 
@@ -36,7 +36,8 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
 
     try {
       await cambiarPassword(actual, nueva);
-      setExitoMsg('Contraseña actualizada exitosamente.');
+      window.alert('Contraseña actualizada. Inicia sesión nuevamente con tu nueva contraseña.');
+      setExitoMsg('Contraseña actualizada. Inicia sesión nuevamente con la nueva contraseña.');
       setTimeout(() => {
         if (onClose) onClose();
       }, 1500);
@@ -153,7 +154,7 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
               <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
               <input
                 type="password"
-                required minLength={8}
+                required minLength={12}
                 value={nueva}
                 onChange={(e) => setNueva(e.target.value)}
                 className="input"
@@ -170,7 +171,7 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
               <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
               <input
                 type="password"
-                required minLength={8}
+                required minLength={12}
                 value={confirmacion}
                 onChange={(e) => setConfirmacion(e.target.value)}
                 className="input"
