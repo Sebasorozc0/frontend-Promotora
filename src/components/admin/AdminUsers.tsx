@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LoadState } from '../common/LoadState';
 import { api } from '../../api/client';
 import { 
   UsuarioDto, 
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react';
 
 export const AdminUsers: React.FC = () => {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioDetalleDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -78,59 +80,12 @@ export const AdminUsers: React.FC = () => {
 
   const fetchUsuarios = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const res = await api.getUsuarios(1, 100);
-      setUsuarios(res.items || []);
-    } catch {
-      // Mock para vista de desarrollo si el token no tiene rol admin en ese instante
-      setUsuarios([
-        {
-          usuario: {
-            id: 1,
-            email: 'admin@promotora.gt',
-            nombre: 'Administrador',
-            apellido: 'Sistema',
-            rol: 'ADMINISTRADOR',
-            estado: 'ACTIVO',
-            debeCambiarPassword: false
-          },
-          perfil: {
-            telefono: '+502 2333-4444',
-            empresa: 'ASA Promotora Central'
-          }
-        },
-        {
-          usuario: {
-            id: 2,
-            email: 'cayala.dueno@recintos.gt',
-            nombre: 'Paseo',
-            apellido: 'Cayalá',
-            rol: 'DUENO_RECINTO',
-            estado: 'ACTIVO',
-            debeCambiarPassword: false
-          },
-          perfil: {
-            empresa: 'Inversiones Cayalá S.A.',
-            nit: '8877665-4',
-            telefono: '+502 2493-0000'
-          }
-        },
-        {
-          usuario: {
-            id: 3,
-            email: 'cliente.demo@gmail.com',
-            nombre: 'Carlos',
-            apellido: 'Mendoza',
-            rol: 'CLIENTE',
-            estado: 'ACTIVO',
-            debeCambiarPassword: false
-          },
-          perfil: {
-            telefono: '+502 5555-1234',
-            nit: 'CF'
-          }
-        }
-      ]);
+      setUsuarios(await api.getTodosUsuarios());
+    } catch (err: any) {
+      setUsuarios([]);
+      setLoadError(err?.detail || 'No se pudieron cargar los usuarios.');
     } finally {
       setLoading(false);
     }
@@ -231,6 +186,7 @@ export const AdminUsers: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <LoadState loading={loading} error={loadError} empty={!usuarios.length} onRetry={fetchUsuarios} />
       {/* Toast Feedback */}
       {feedback && (
         <div style={{

@@ -59,6 +59,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    const handleExpired = () => {
+      setUser(null);
+      localStorage.removeItem('promotora_user');
+    };
+    window.addEventListener('promotora:session-expired', handleExpired);
+    return () => window.removeEventListener('promotora:session-expired', handleExpired);
+  }, []);
+
+  useEffect(() => {
     // Restaurar sesión de localStorage únicamente si existe token Y usuario válido
     const token = api.getAccessToken();
     const storedUser = localStorage.getItem('promotora_user');
@@ -83,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Sincronizar y actualizar con datos de perfil reales en background
         if (parsed.id) {
           api.getPerfil(parsed.id).then((perfil) => {
-            if (perfil?.usuario) {
+            if (perfil?.usuario && api.getAccessToken()) {
               const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
               const rolVerificado = (perfil.usuario.rol as RolUsuario) || parsed.rol;
               const sincronizado: UsuarioSesion = {
@@ -106,15 +115,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setIsLoading(false);
 
-    // Escuchar expiración total de sesión para limpiar UI
-    const handleExpired = () => {
-      setUser(null);
-      localStorage.removeItem('promotora_user');
-    };
-    window.addEventListener('promotora:session-expired', handleExpired);
-    return () => {
-      window.removeEventListener('promotora:session-expired', handleExpired);
-    };
   }, []);
 
   const login = async (email: string, pass: string) => {
@@ -127,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let rolUsuario = rolFromToken;
 
       try {
-        const perfil = await api.getPerfil(res.usuarioId);
+        const perfil = res.debeCambiarPassword ? null : await api.getPerfil(res.usuarioId);
         if (perfil && perfil.usuario) {
           const nombreCompleto = `${perfil.usuario.nombre || ''} ${perfil.usuario.apellido || ''}`.trim();
           if (nombreCompleto) nombreUsuario = nombreCompleto;
@@ -136,6 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch {
         // En caso de fallo de red en perfil, conservamos rol decodificado del JWT
       }
+
+      if (!api.getAccessToken()) throw new Error('La sesión expiró. Inicia sesión nuevamente.');
 
       const sesion: UsuarioSesion = {
         id: res.usuarioId,

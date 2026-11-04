@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:frontend": "node qa/frontend-audit.mjs --regression"
   },
   "dependencies": {
     "lucide-react": "^1.61.0",

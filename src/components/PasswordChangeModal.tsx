@@ -16,7 +16,7 @@ export const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({ isOpen
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [exitoMsg, setExitoMsg] = useState<string | null>(null);
 
-  const esVisible = isOpen !== undefined ? isOpen : debeCambiarPassword;
+  const esVisible = debeCambiarPassword || !!isOpen;
   if (!esVisible) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LoadState } from '../common/LoadState';
 import { api } from '../../api/client';
 import { DocumentoRagDto } from '../../types/api';
 import { Modal } from '../common/Modal';
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 
 export const AdminRag: React.FC = () => {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [documentos, setDocumentos] = useState<DocumentoRagDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -49,43 +51,12 @@ export const AdminRag: React.FC = () => {
 
   const fetchDocumentos = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const res = await api.getDocumentosRag(1, 50);
-      setDocumentos(res.items || []);
-    } catch (e: any) {
-      // Fallback si la base de datos está vacía
-      setDocumentos([
-        {
-          id: 1,
-          serie: 'DOC-POLITICAS-001',
-          nombreArchivo: 'Reglamento_General_Eventos_2026.pdf',
-          version: 1,
-          estado: 'INDEXADO',
-          chunks: 24,
-          fechaCreacion: '2026-10-18T10:00:00Z',
-          activo: true
-        },
-        {
-          id: 2,
-          serie: 'DOC-CALENDARIO-002',
-          nombreArchivo: 'Calendario_Temporada_2026.docx',
-          version: 1,
-          estado: 'INDEXADO',
-          chunks: 8,
-          fechaCreacion: '2026-10-19T14:30:00Z',
-          activo: true
-        },
-        {
-          id: 3,
-          serie: 'DOC-REEMBOLSOS-003',
-          nombreArchivo: 'Politicas_Reembolso_ASA.pdf',
-          version: 1,
-          estado: 'PENDIENTE',
-          chunks: 0,
-          fechaCreacion: '2026-10-21T09:15:00Z',
-          activo: true
-        }
-      ]);
+      setDocumentos(await api.getTodosDocumentosRag());
+    } catch (err: any) {
+      setDocumentos([]);
+      setLoadError(err?.detail || 'No se pudieron cargar los documentos.');
     } finally {
       setLoading(false);
     }
@@ -138,11 +109,7 @@ export const AdminRag: React.FC = () => {
       showFeedback(`¡Documento indexado con éxito! Los vectores están activos en el asistente José.`);
       fetchDocumentos();
     } catch (err: any) {
-      // Fallback local visual si los embeddings no están configurados en dev
-      setDocumentos((prev) =>
-        prev.map((d) => (d.id === doc.id ? { ...d, estado: 'INDEXADO', chunks: 16 } : d))
-      );
-      showFeedback(`Documento indexado (simulado para desarrollo).`);
+      showFeedback(err?.detail || 'No se pudo indexar el documento.', 'error');
     }
   };
 
@@ -162,12 +129,9 @@ export const AdminRag: React.FC = () => {
     try {
       const data = await api.getDocumentoRag(id);
       setSelectedDocParaDetalle(data);
-    } catch {
-      const local = documentos.find((d) => d.id === id);
-      setSelectedDocParaDetalle({
-        ...local,
-        contenidoExtraido: 'Contenido extraído del documento normativo sobre accesos, boletaje, reglas de reembolsos y horarios de apertura de puertas del recinto.'
-      });
+    } catch (err: any) {
+      setSelectedDocParaDetalle(null);
+      showFeedback(err?.detail || 'No se pudo cargar el detalle del documento.', 'error');
     } finally {
       setLoadingDetalle(false);
     }
@@ -181,6 +145,7 @@ export const AdminRag: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <LoadState loading={loading} error={loadError} empty={!documentos.length} onRetry={fetchDocumentos} />
       {/* Toast Feedback */}
       {feedback && (
         <div style={{

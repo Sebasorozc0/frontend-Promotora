@@ -29,7 +29,7 @@ const DUENO_ALLOWED_TABS: AdminTabKey[] = ['RECINTOS', 'DISTRIBUCION', 'FINANZAS
 export const AdminPanel: React.FC = () => {
   const { tab } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isLoading, debeCambiarPassword } = useAuth();
 
   const rol = (user?.rol || '').toUpperCase();
   const isDueno = rol === 'DUENO_RECINTO';
@@ -55,6 +55,9 @@ export const AdminPanel: React.FC = () => {
       navigate('/admin/recintos', { replace: true });
     }
   }, [isDueno, tabAdmin, navigate]);
+
+  if (isLoading) return <p role="status" className="container">Cargando sesión…</p>;
+  if (debeCambiarPassword) return <p role="status" className="container">Completa el cambio obligatorio de contraseña para continuar.</p>;
 
   // Si no tiene privilegios administrativos o de recinto, denegar acceso
   if (!isAdmin && !isDueno) {

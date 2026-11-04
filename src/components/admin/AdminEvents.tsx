@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { api, MOCK_EVENTOS } from '../../api/client';
+import { api } from '../../api/client';
 import { EventoCatalogo, CategoriaDetalleDto, RecintoPublico, LocalidadMapa } from '../../types/api';
+import { useAuth } from '../../context/AuthContext';
+import { toLocalDateTime, toApiDateTime } from '../../utils/dates';
+import { LoadState } from '../common/LoadState';
 import { Modal } from '../common/Modal';
 import { 
   Calendar, 
@@ -20,6 +23,9 @@ import {
 } from 'lucide-react';
 
 export const AdminEvents: React.FC = () => {
+  const { user } = useAuth();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [eventos, setEventos] = useState<EventoCatalogo[]>([]);
   const [recintos, setRecintos] = useState<RecintoPublico[]>([]);
   const [categorias, setCategorias] = useState<CategoriaDetalleDto[]>([]);
@@ -29,10 +35,10 @@ export const AdminEvents: React.FC = () => {
 
   // Modales
   const [eventoModalOpen, setEventoModalOpen] = useState(false);
-  const [editingEvento, setEditingEvento] = useState<EventoCatalogo | null>(null);
+  const [editingEvento, setEditingEvento] = useState<Awaited<ReturnType<typeof api.getEventoAdmin>> | null>(null);
   const [estadoModalOpen, setEstadoModalOpen] = useState(false);
   const [selectedEventoParaEstado, setSelectedEventoParaEstado] = useState<EventoCatalogo | null>(null);
-  const [nuevoEstadoSeleccionado, setNuevoEstadoSeleccionado] = useState<string>('PUBLICADO');
+  const [nuevoEstadoSeleccionado, setNuevoEstadoSeleccionado] = useState<string>('PROGRAMADO');
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [selectedEventoParaImagen, setSelectedEventoParaImagen] = useState<EventoCatalogo | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -54,8 +60,8 @@ export const AdminEvents: React.FC = () => {
 
   // Formulario Evento
   const [eventoForm, setEventoForm] = useState({
-    recintoId: 1,
-    categoriaId: 1,
+    recintoId: 0,
+    categoriaId: 0,
     nombre: '',
     descripcion: '',
     fechaInicio: '',
@@ -90,7 +96,7 @@ export const AdminEvents: React.FC = () => {
         setEventoForm((prev) => ({ ...prev, categoriaId: listaCats[0].id }));
       }
     } catch (e) {
-      console.warn('Error cargando catálogos auxiliares:', e);
+      showFeedback((e as any)?.detail || 'No se pudieron cargar los catálogos auxiliares.', 'error');
       setRecintos([]);
       setCategorias([]);
     }
@@ -99,14 +105,15 @@ export const AdminEvents: React.FC = () => {
   const fetchEventos = async () => {
     setLoading(true);
     try {
-      const res = await api.getEventos({ pageSize: 100 });
-      if (res && res.items && res.items.length > 0) {
-        setEventos(res.items);
-      } else {
-        setEventos(MOCK_EVENTOS);
-      }
-    } catch {
-      setEventos(MOCK_EVENTOS);
+      setLoadError(null);
+      const items = await api.getEventosAdmin();
+      if (user?.rol === 'DUENO_RECINTO') {
+        const propios = new Set((await api.getRecintos()).map(r => r.id));
+        setEventos(items.filter(ev => propios.has(ev.recintoId)));
+      } else setEventos(items);
+    } catch (err: any) {
+      setEventos([]);
+      setLoadError(err?.detail || 'No se pudieron cargar los eventos.');
     } finally {
       setLoading(false);
     }
@@ -121,8 +128,8 @@ export const AdminEvents: React.FC = () => {
   const handleOpenCreateEvento = () => {
     setEditingEvento(null);
     setEventoForm({
-      recintoId: recintos[0]?.id || 1,
-      categoriaId: categorias[0]?.id || 1,
+      recintoId: recintos[0]?.id || 0,
+      categoriaId: categorias[0]?.id || 0,
       nombre: '',
       descripcion: '',
       fechaInicio: '',
@@ -135,35 +142,41 @@ export const AdminEvents: React.FC = () => {
     setEventoModalOpen(true);
   };
 
-  const handleOpenEditEvento = (ev: EventoCatalogo) => {
-    setEditingEvento(ev);
-    setEventoForm({
-      recintoId: ev.recintoId,
-      categoriaId: ev.categoriaId,
-      nombre: ev.titulo,
-      descripcion: ev.descripcion,
-      fechaInicio: ev.fechaInicio ? ev.fechaInicio.substring(0, 16) : '',
-      fechaFin: ev.fechaFin ? ev.fechaFin.substring(0, 16) : '',
-      fechaInicioVenta: '',
-      fechaFinVenta: '',
-      maxBoletosPorCompra: ev.maxBoletosPorCompra || 6,
-      imagenUrl: ev.imagenFlyerUrl || ''
-    });
-    setEventoModalOpen(true);
+  const handleOpenEditEvento = async (ev: EventoCatalogo) => {
+    try {
+      const detalle = await api.getEventoAdmin(ev.id);
+      setEditingEvento(detalle);
+      setEventoForm({
+        recintoId: detalle.recintoId, categoriaId: detalle.categoriaId,
+        nombre: detalle.titulo, descripcion: detalle.descripcion,
+        fechaInicio: toLocalDateTime(detalle.fechaInicio), fechaFin: toLocalDateTime(detalle.fechaFin),
+        fechaInicioVenta: toLocalDateTime(detalle.fechaInicioVenta), fechaFinVenta: toLocalDateTime(detalle.fechaFinVenta),
+        maxBoletosPorCompra: detalle.maxBoletosPorCompra, imagenUrl: detalle.imagenFlyerUrl || '',
+      });
+      setEventoModalOpen(true);
+    } catch (err: any) { showFeedback(err?.detail || 'No se pudo cargar el evento para editarlo.', 'error'); }
   };
 
   const handleSaveEvento = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    const inicio = new Date(eventoForm.fechaInicio).getTime();
+    if (!Number.isFinite(inicio) || !eventoForm.recintoId || !eventoForm.categoriaId ||
+        (eventoForm.fechaFin && new Date(eventoForm.fechaFin).getTime() <= inicio) ||
+        (eventoForm.fechaInicioVenta && eventoForm.fechaFinVenta && new Date(eventoForm.fechaInicioVenta) >= new Date(eventoForm.fechaFinVenta))) {
+      showFeedback('Revisa el recinto, la categoría y el orden de las fechas.', 'error'); return;
+    }
+    setSaving(true);
     try {
       const payload: any = {
         recintoId: Number(eventoForm.recintoId),
         categoriaId: Number(eventoForm.categoriaId),
         nombre: eventoForm.nombre,
         descripcion: eventoForm.descripcion,
-        fechaInicio: new Date(eventoForm.fechaInicio).toISOString(),
-        fechaFin: eventoForm.fechaFin ? new Date(eventoForm.fechaFin).toISOString() : null,
-        fechaInicioVenta: eventoForm.fechaInicioVenta ? new Date(eventoForm.fechaInicioVenta).toISOString() : null,
-        fechaFinVenta: eventoForm.fechaFinVenta ? new Date(eventoForm.fechaFinVenta).toISOString() : null,
+        fechaInicio: toApiDateTime(eventoForm.fechaInicio, editingEvento?.fechaInicio),
+        fechaFin: toApiDateTime(eventoForm.fechaFin, editingEvento?.fechaFin),
+        fechaInicioVenta: editingEvento && editingEvento.fechaInicioVenta === undefined && !eventoForm.fechaInicioVenta ? undefined : toApiDateTime(eventoForm.fechaInicioVenta, editingEvento?.fechaInicioVenta),
+        fechaFinVenta: editingEvento && editingEvento.fechaFinVenta === undefined && !eventoForm.fechaFinVenta ? undefined : toApiDateTime(eventoForm.fechaFinVenta, editingEvento?.fechaFinVenta),
         maxBoletosPorCompra: Number(eventoForm.maxBoletosPorCompra),
         imagenUrl: eventoForm.imagenUrl || null
       };
@@ -179,7 +192,7 @@ export const AdminEvents: React.FC = () => {
       fetchEventos();
     } catch (err: any) {
       showFeedback(err?.detail || 'Error al guardar el evento', 'error');
-    }
+    } finally { setSaving(false); }
   };
 
   const handleDeleteEvento = async (id: number, titulo: string) => {
@@ -246,8 +259,10 @@ export const AdminEvents: React.FC = () => {
       ]);
       setTiposEntrada(entradas || []);
       setLocalidadesRecinto(locs || []);
-    } catch {
+    } catch (err: any) {
       setTiposEntrada([]);
+      setLocalidadesRecinto([]);
+      showFeedback(err?.detail || 'No se pudieron cargar las entradas y localidades.', 'error');
     }
   };
 
@@ -300,6 +315,7 @@ export const AdminEvents: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <LoadState loading={loading} error={loadError} empty={!eventos.length} onRetry={fetchEventos} />
       {/* Toast Feedback */}
       {feedback && (
         <div style={{
@@ -323,7 +339,7 @@ export const AdminEvents: React.FC = () => {
         <div>
           <h3 style={{ fontSize: '1.4rem' }}>Gestión Integral de Eventos</h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Ciclo de vida del espectáculo: BORRADOR → PUBLICADO → EN_VENTA → FINALIZADO.
+            Ciclo de vida del espectáculo: BORRADOR → PROGRAMADO → EN_VENTA → FINALIZADO.
           </p>
         </div>
 
@@ -348,7 +364,8 @@ export const AdminEvents: React.FC = () => {
           >
             <option value="TODOS">Todos los Estados</option>
             <option value="BORRADOR">BORRADOR</option>
-            <option value="PUBLICADO">PUBLICADO</option>
+            <option value="PROGRAMADO">PROGRAMADO</option>
+            <option value="AGOTADO">AGOTADO</option>
             <option value="EN_VENTA">EN VENTA</option>
             <option value="FINALIZADO">FINALIZADO</option>
             <option value="CANCELADO">CANCELADO</option>
@@ -636,8 +653,8 @@ export const AdminEvents: React.FC = () => {
             <button type="button" onClick={() => setEventoModalOpen(false)} className="btn btn-outline" style={{ flex: 1 }}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-              Guardar Evento
+            <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
+              {saving ? 'Guardando…' : 'Guardar Evento'}
             </button>
           </div>
         </form>

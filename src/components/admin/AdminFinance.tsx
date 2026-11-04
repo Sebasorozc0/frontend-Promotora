@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { LoadState } from '../common/LoadState';
 import { api } from '../../api/client';
 import { CuentaFinancieraDto, MovimientoFinancieroDto, TipoCuenta, EstadoCuenta, TipoMovimiento } from '../../types/api';
 import { Modal } from '../common/Modal';
@@ -19,6 +21,10 @@ import {
 } from 'lucide-react';
 
 export const AdminFinance: React.FC = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.rol === 'ADMINISTRADOR';
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [liquidationKey, setLiquidationKey] = useState('');
   const [cuentas, setCuentas] = useState<CuentaFinancieraDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
@@ -26,6 +32,7 @@ export const AdminFinance: React.FC = () => {
 
   // Modal Movimientos
   const [selectedCuentaParaMovimientos, setSelectedCuentaParaMovimientos] = useState<CuentaFinancieraDto | null>(null);
+  const [movimientosError, setMovimientosError] = useState<string | null>(null);
   const [movimientos, setMovimientos] = useState<MovimientoFinancieroDto[]>([]);
   const [loadingMovimientos, setLoadingMovimientos] = useState(false);
   const [filtroTipoMovimiento, setFiltroTipoMovimiento] = useState<string>('TODOS');
@@ -49,11 +56,13 @@ export const AdminFinance: React.FC = () => {
 
   const fetchCuentas = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.getCuentas();
-      setCuentas(res || []);
+      setCuentas(isAdmin ? res : res.filter(c => c.duenoId === user?.id));
     } catch (e: any) {
-      showFeedback('Error cargando cuentas: ' + (e?.detail || e.message), 'error');
+      setCuentas([]);
+      setLoadError(e?.detail || 'No se pudieron cargar las cuentas.');
     } finally {
       setLoading(false);
     }
@@ -66,12 +75,12 @@ export const AdminFinance: React.FC = () => {
   const handleOpenMovimientos = async (cuenta: CuentaFinancieraDto) => {
     setSelectedCuentaParaMovimientos(cuenta);
     setLoadingMovimientos(true);
+    setMovimientos([]); setMovimientosError(null);
     try {
-      const res = await api.getMovimientosCuenta(cuenta.id, { pageSize: 50 });
-      setMovimientos(res.items || []);
+      setMovimientos(await api.getTodosMovimientos(cuenta.id));
     } catch (e: any) {
       setMovimientos([]);
-      showFeedback('Error cargando movimientos de la cuenta.', 'error');
+      setMovimientosError(e?.detail || 'No se pudieron cargar los movimientos.');
     } finally {
       setLoadingMovimientos(false);
     }
@@ -79,7 +88,7 @@ export const AdminFinance: React.FC = () => {
 
   const handleLiquidar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCuentaParaLiquidar) return;
+    if (!isAdmin || !selectedCuentaParaLiquidar || liquidando) return;
     if (montoLiquidar <= 0 || montoLiquidar > selectedCuentaParaLiquidar.saldo) {
       alert('El monto debe ser positivo y no exceder el saldo disponible.');
       return;
@@ -87,8 +96,8 @@ export const AdminFinance: React.FC = () => {
 
     setLiquidando(true);
     try {
-      await api.liquidarCuenta(selectedCuentaParaLiquidar.id, montoLiquidar);
-      showFeedback(`Liquidación por Q${montoLiquidar.toFixed(2)} procesada exitosamente con Idempotency-Key.`);
+      await api.liquidarCuenta(selectedCuentaParaLiquidar.id, montoLiquidar, liquidationKey);
+      showFeedback(`Liquidación por ${formatMoney(montoLiquidar, selectedCuentaParaLiquidar.moneda)} procesada exitosamente con Idempotency-Key.`);
       setSelectedCuentaParaLiquidar(null);
       fetchCuentas();
     } catch (err: any) {
@@ -99,6 +108,7 @@ export const AdminFinance: React.FC = () => {
   };
 
   const handleCerrarCuenta = async (cuenta: CuentaFinancieraDto) => {
+    if (!isAdmin) return;
     if (cuenta.saldo !== 0) {
       alert(`No se puede cerrar una cuenta con saldo activo (Saldo actual: Q${cuenta.saldo.toFixed(2)}). Debe liquidarse a cero primero.`);
       return;
@@ -116,12 +126,12 @@ export const AdminFinance: React.FC = () => {
 
   const handleReembolsarCompra = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!publicIdReembolso.trim()) return;
+    if (!isAdmin || !publicIdReembolso.trim() || reembolsando) return;
 
     setReembolsando(true);
     try {
       await api.reembolsarCompra(publicIdReembolso.trim());
-      showFeedback(`Compra ${publicIdReembolso} reembolsada exitosamente. Boletos revertidos a ANULADO.`);
+      showFeedback(`Compra ${publicIdReembolso} reembolsada exitosamente. Operación confirmada por el servidor.`);
       setReembolsoModalOpen(false);
       setPublicIdReembolso('');
       fetchCuentas();
@@ -132,18 +142,15 @@ export const AdminFinance: React.FC = () => {
     }
   };
 
-  // Métricas calculadas
-  const saldoPlataforma = cuentas
-    .filter((c) => c.tipo === 'PLATAFORMA')
-    .reduce((acc, c) => acc + c.saldo, 0);
-
-  const saldoDuenos = cuentas
-    .filter((c) => c.tipo === 'DUENO')
-    .reduce((acc, c) => acc + c.saldo, 0);
-
-  const saldoImpuestos = cuentas
-    .filter((c) => c.tipo === 'IMPUESTOS')
-    .reduce((acc, c) => acc + c.saldo, 0);
+  const formatMoney = (amount: number, moneda: string) => `${moneda} ${amount.toFixed(2)}`;
+  const saldoPorTipo = (tipo: string) => {
+    const totales = new Map<string, number>();
+    cuentas.filter(c => c.tipo === tipo).forEach(c => totales.set(c.moneda, (totales.get(c.moneda) || 0) + c.saldo));
+    return [...totales].map(([moneda, saldo]) => formatMoney(saldo, moneda)).join(' · ') || 'Sin cuentas';
+  };
+  const saldoPlataforma = saldoPorTipo('PLATAFORMA');
+  const saldoDuenos = saldoPorTipo('DUENO');
+  const saldoImpuestos = saldoPorTipo('IMPUESTOS');
 
   const cuentasFiltradas = cuentas.filter((c) => {
     const coincideTipo = filtroTipo === 'TODOS' || c.tipo === filtroTipo;
@@ -157,6 +164,7 @@ export const AdminFinance: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <LoadState loading={loading} error={loadError} empty={!cuentas.length} onRetry={fetchCuentas} />
       {/* Toast Feedback */}
       {feedback && (
         <div style={{
@@ -175,71 +183,17 @@ export const AdminFinance: React.FC = () => {
         </div>
       )}
 
-      {/* Tarjetas de Resumen Contable */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-        gap: '16px'
-      }}>
-        <div style={{
-          backgroundColor: '#FFF',
-          border: '2.5px solid var(--border-strong)',
-          boxShadow: 'var(--shadow-crisp-sm)',
-          padding: '20px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
-              COMISIONES PLATAFORMA
-            </span>
-            <TrendingUp size={18} color="var(--accent-emerald)" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+        {(isAdmin ? [
+          { label: 'COMISIONES PLATAFORMA', value: saldoPlataforma },
+          { label: 'FONDOS POR LIQUIDAR A DUEÑOS', value: saldoDuenos },
+          { label: 'RESERVA DE IMPUESTOS', value: saldoImpuestos },
+        ] : [{ label: 'SALDO DE MIS RECINTOS', value: saldoDuenos }]).map(item =>
+          <div key={item.label} style={{ background: '#FFF', border: '2px solid var(--border-strong)', padding: 20 }}>
+            <div style={{ fontWeight: 700 }}>{item.label}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem' }}>{item.value}</div>
           </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-emerald)' }}>
-            Q{saldoPlataforma.toFixed(2)}
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Ingresos netos por comisión de boletaje
-          </div>
-        </div>
-
-        <div style={{
-          backgroundColor: '#FFF',
-          border: '2.5px solid var(--border-strong)',
-          boxShadow: 'var(--shadow-crisp-sm)',
-          padding: '20px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
-              FONDOS POR LIQUIDAR A DUEÑOS
-            </span>
-            <Building2 size={18} color="var(--accent-cobalt)" />
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-cobalt)' }}>
-            Q{saldoDuenos.toFixed(2)}
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Disponible para liquidación a promotores
-          </div>
-        </div>
-
-        <div style={{
-          backgroundColor: '#FFF',
-          border: '2.5px solid var(--border-strong)',
-          boxShadow: 'var(--shadow-crisp-sm)',
-          padding: '20px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
-              RESERVA DE IMPUESTOS (SAT / IVA)
-            </span>
-            <DollarSign size={18} color="var(--accent-amber)" />
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-amber)' }}>
-            Q{saldoImpuestos.toFixed(2)}
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Retenciones fiscales aplicadas por ley
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Barra de Filtros y Acción de Reembolso */}
@@ -278,13 +232,13 @@ export const AdminFinance: React.FC = () => {
           </select>
         </div>
 
-        <button
+        {isAdmin && <button
           onClick={() => setReembolsoModalOpen(true)}
           className="btn btn-sm btn-outline"
           style={{ color: 'var(--accent-vermilion)', borderColor: 'var(--accent-vermilion)' }}
         >
           <RotateCcw size={15} /> Reembolsar Compra de Cliente
-        </button>
+        </button>}
       </div>
 
       {/* Grid de Cuentas Financieras */}
@@ -337,7 +291,7 @@ export const AdminFinance: React.FC = () => {
                   Saldo Actual
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.4rem', fontWeight: 800, color: c.saldo > 0 ? 'var(--accent-emerald)' : 'var(--text-primary)' }}>
-                  Q{c.saldo.toFixed(2)}
+                  {formatMoney(c.saldo, c.moneda)}
                 </span>
               </div>
             </div>
@@ -351,10 +305,11 @@ export const AdminFinance: React.FC = () => {
                 <FileText size={14} /> Extracto
               </button>
 
-              {c.tipo === 'DUENO' && c.estado === 'ACTIVA' && (
+              {isAdmin && c.tipo === 'DUENO' && c.estado === 'ACTIVA' && (
                 <button
                   onClick={() => {
                     setSelectedCuentaParaLiquidar(c);
+                    setLiquidationKey(crypto.randomUUID());
                     setMontoLiquidar(c.saldo);
                   }}
                   disabled={c.saldo <= 0}
@@ -366,7 +321,7 @@ export const AdminFinance: React.FC = () => {
                 </button>
               )}
 
-              {c.estado === 'ACTIVA' && c.tipo === 'DUENO' && (
+              {isAdmin && c.estado === 'ACTIVA' && c.tipo === 'DUENO' && (
                 <button
                   onClick={() => handleCerrarCuenta(c)}
                   className="btn btn-sm btn-outline"
@@ -402,7 +357,7 @@ export const AdminFinance: React.FC = () => {
                 Titular / Empresa: <strong>{selectedCuentaParaMovimientos?.empresa || selectedCuentaParaMovimientos?.duenoNombre || selectedCuentaParaMovimientos?.tipo}</strong>
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                Saldo Conciliado: <strong style={{ color: 'var(--accent-emerald)' }}>Q{selectedCuentaParaMovimientos?.saldo.toFixed(2)}</strong>
+                Saldo Conciliado: <strong style={{ color: 'var(--accent-emerald)' }}>{selectedCuentaParaMovimientos && formatMoney(selectedCuentaParaMovimientos.saldo, selectedCuentaParaMovimientos.moneda)}</strong>
               </div>
             </div>
 
@@ -425,7 +380,7 @@ export const AdminFinance: React.FC = () => {
           </div>
 
           <div style={{ maxHeight: '420px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {loadingMovimientos ? (
+            {movimientosError ? <LoadState error={movimientosError} onRetry={() => selectedCuentaParaMovimientos && handleOpenMovimientos(selectedCuentaParaMovimientos)} /> : loadingMovimientos ? (
               <div style={{ padding: '30px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
                 Cargando extracto de transacciones...
               </div>
@@ -471,10 +426,10 @@ export const AdminFinance: React.FC = () => {
                       fontWeight: 800,
                       color: m.monto >= 0 ? 'var(--accent-emerald)' : 'var(--accent-vermilion)'
                     }}>
-                      {m.monto >= 0 ? `+Q${m.monto.toFixed(2)}` : `-Q${Math.abs(m.monto).toFixed(2)}`}
+                      {m.monto >= 0 ? '+' : '-'}{formatMoney(Math.abs(m.monto), selectedCuentaParaMovimientos?.moneda || '')}
                     </div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Saldo: Q{m.saldoPosterior.toFixed(2)}
+                      Saldo: {formatMoney(m.saldoPosterior, selectedCuentaParaMovimientos?.moneda || '')}
                     </div>
                   </div>
                 </div>
@@ -510,12 +465,12 @@ export const AdminFinance: React.FC = () => {
             fontFamily: 'var(--font-mono)',
             fontSize: '0.85rem'
           }}>
-            Saldo Disponible para Liquidación: <strong>Q{selectedCuentaParaLiquidar?.saldo.toFixed(2)}</strong>
+            Saldo Disponible para Liquidación: <strong>{selectedCuentaParaLiquidar && formatMoney(selectedCuentaParaLiquidar.saldo, selectedCuentaParaLiquidar.moneda)}</strong>
           </div>
 
           <div>
             <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, marginBottom: '6px' }}>
-              Monto a Liquidar (Q) *
+              Monto a Liquidar ({selectedCuentaParaLiquidar?.moneda}) *
             </label>
             <input
               type="number"

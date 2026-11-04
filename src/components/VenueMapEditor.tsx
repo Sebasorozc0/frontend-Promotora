@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { api, MOCK_RECINTOS } from '../api/client';
+import { LoadState } from './common/LoadState';
+import { api } from '../api/client';
 import { RecintoPublico, LocalidadMapa, DatosLocalidadRequest, PoligonoGeo } from '../types/api';
 import { 
   Upload, 
@@ -32,10 +33,11 @@ const COLOR_PALETTE = [
 ];
 
 export const VenueMapEditor: React.FC = () => {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [recintos, setRecintos] = useState<RecintoPublico[]>([]);
   const [selectedRecintoId, setSelectedRecintoId] = useState<number>(0);
   const [localidades, setLocalidades] = useState<LocalidadMapa[]>([]);
-  const [imagenPlano, setImagenPlano] = useState<string>('/venue_blueprint.jpg');
+  const [imagenPlano, setImagenPlano] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -66,6 +68,8 @@ export const VenueMapEditor: React.FC = () => {
 
   // Cargar recintos reales del usuario autenticado
   const cargarRecintos = async () => {
+    setLoadError(null);
+    setIsLoading(true);
     try {
       const res = await api.getRecintos();
       const lista: RecintoPublico[] = Array.isArray(res) ? res : (res as any)?.items || [];
@@ -79,37 +83,29 @@ export const VenueMapEditor: React.FC = () => {
         setRecintos([]);
         setSelectedRecintoId(0);
       }
-    } catch (err) {
-      console.warn('[VenueMapEditor] Error cargando recintos:', err);
-    }
+    } catch (err: any) {
+      setRecintos([]); setSelectedRecintoId(0);
+      setLoadError(err?.detail || 'No se pudieron cargar los recintos.');
+    } finally { setIsLoading(false); }
   };
 
   useEffect(() => {
     cargarRecintos();
   }, []);
 
-  // Cargar mapa del recinto seleccionado
   useEffect(() => {
-    if (selectedRecintoId > 0) {
-      cargarMapaRecinto(selectedRecintoId);
-    } else {
-      setLocalidades([]);
-    }
+    let active = true;
+    setLocalidades([]); setImagenPlano('');
+    setSelectedLocalidad(null); setIsFormOpen(false); setIsDrawing(false); setCurrentPoints([]);
+    if (!selectedRecintoId) return;
+    setIsLoading(true); setLoadError(null);
+    api.getMapaRecinto(selectedRecintoId).then(mapa => {
+      if (active) { setLocalidades(mapa.localidades || []); setImagenPlano(mapa.imagenPlanoUrl || ''); }
+    }).catch((err: any) => {
+      if (active) setLoadError(err?.detail || 'No se pudo cargar el plano del recinto.');
+    }).finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
   }, [selectedRecintoId]);
-
-  const cargarMapaRecinto = async (recintoId: number) => {
-    if (!recintoId) return;
-    setIsLoading(true);
-    try {
-      const mapa = await api.getMapaRecinto(recintoId);
-      setLocalidades(mapa.localidades || []);
-      setImagenPlano(mapa.imagenPlanoUrl || '/venue_blueprint.jpg');
-    } catch (err) {
-      console.warn('Error cargando mapa, usando fallback.', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleCrearRecinto = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +209,7 @@ export const VenueMapEditor: React.FC = () => {
 
   const handleGuardarLocalidad = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedRecintoId || loadError || isLoading) return;
     if (!nombreLocalidad.trim()) {
       alert('Ingresa un nombre para la localidad.');
       return;
@@ -256,8 +253,9 @@ export const VenueMapEditor: React.FC = () => {
       } else {
         // Crear nueva
         const creada = await api.crearLocalidad(selectedRecintoId, payload);
+        if (!creada?.id) throw { detail: 'El servidor no confirmó la localidad creada.' };
         const nuevaLoc: LocalidadMapa = {
-          id: creada.id || Math.floor(Math.random() * 9000) + 1000,
+          id: creada.id,
           recintoId: selectedRecintoId,
           nombre: payload.nombre,
           capacidad: payload.capacidad,
@@ -311,7 +309,7 @@ export const VenueMapEditor: React.FC = () => {
   // Subir imagen de plano
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !selectedRecintoId || loadError) return;
 
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       alert('Formato no admitido. Sube una imagen PNG, JPG o WEBP.');
@@ -325,18 +323,20 @@ export const VenueMapEditor: React.FC = () => {
 
     // Previsualización local inmediata
     const localUrl = URL.createObjectURL(file);
+    const anterior = imagenPlano;
     setImagenPlano(localUrl);
 
     try {
       setIsLoading(true);
       const res = await api.subirPlanoRecinto(selectedRecintoId, file);
-      if (res.url) {
-        setImagenPlano(res.url);
-      }
+      if (!res?.url) throw { detail: 'El servidor no confirmó la imagen guardada.' };
+      setImagenPlano(res.url);
       mostrarFeedback('¡Foto del plano del recinto subida con éxito al servidor!', 'success');
     } catch (err: any) {
-      mostrarFeedback('Se aplicó la previsualización local del plano.', 'info');
+      setImagenPlano(anterior);
+      mostrarFeedback(err?.detail || 'No se pudo guardar el plano.', 'error');
     } finally {
+      URL.revokeObjectURL(localUrl);
       setIsLoading(false);
     }
   };
@@ -358,6 +358,7 @@ export const VenueMapEditor: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <LoadState loading={isLoading} error={loadError} empty={!recintos.length} emptyMessage="No hay recintos registrados." onRetry={cargarRecintos} />
       {/* Barra de Notificaciones Feedback */}
       {feedbackMsg && (
         <div style={{
@@ -403,6 +404,7 @@ export const VenueMapEditor: React.FC = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <select
+              disabled={isLoading}
                 value={selectedRecintoId}
                 onChange={(e) => setSelectedRecintoId(Number(e.target.value))}
                 className="input"
@@ -465,6 +467,7 @@ export const VenueMapEditor: React.FC = () => {
           />
 
           <button
+            disabled={!selectedRecintoId || isLoading || !!loadError}
             onClick={() => fileInputRef.current?.click()}
             className="btn btn-outline"
             style={{ gap: '8px' }}
@@ -474,22 +477,13 @@ export const VenueMapEditor: React.FC = () => {
             Subir Foto / Plano
           </button>
 
-          <button
-            onClick={() => {
-              setImagenPlano('/venue_blueprint.jpg');
-              mostrarFeedback('Plano arquitectónico oficial de prueba cargado.', 'info');
-            }}
-            className="btn btn-outline"
-            style={{ gap: '6px' }}
-            title="Cargar el plano arquitectónico por defecto del estadio"
-          >
-            <Sparkles size={15} color="var(--accent-amber)" />
-            Cargar Plano Demo
-          </button>
+
 
           {!isDrawing ? (
             <button
+              disabled={!selectedRecintoId || isLoading || !!loadError}
               onClick={() => {
+                if (!selectedRecintoId || isLoading || loadError) return;
                 setIsDrawing(true);
                 setCurrentPoints([]);
                 setSelectedLocalidad(null);

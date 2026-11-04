@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { api, MOCK_EVENTOS } from '../../api/client';
+import { api } from '../../api/client';
 import { EventoCatalogo, LocalidadMapa, DistribucionDto, MesaDto, SillaDto } from '../../types/api';
+import { LoadState } from '../common/LoadState';
 import { Modal } from '../common/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -21,6 +22,8 @@ import {
 export const AdminSeating: React.FC = () => {
   const { user } = useAuth();
   const isDueno = user?.rol === 'DUENO_RECINTO';
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [eventos, setEventos] = useState<EventoCatalogo[]>([]);
   const [selectedEventoId, setSelectedEventoId] = useState<number | null>(null);
   const [localidades, setLocalidades] = useState<LocalidadMapa[]>([]);
@@ -46,114 +49,58 @@ export const AdminSeating: React.FC = () => {
     setTimeout(() => setFeedback(null), 4500);
   };
 
-  // Carga inicial
   useEffect(() => {
+    let active = true;
+    setLoadError(null);
     const init = async () => {
       try {
-        let recintosIds: number[] = [];
-        if (isDueno) {
-          try {
-            const recs = await api.getRecintos();
-            recintosIds = (recs || []).map((r: any) => r.id);
-          } catch {
-            recintosIds = [];
-          }
-        }
-
-        const res = await api.getEventos({ pageSize: 50 });
-        let items = res?.items && res.items.length > 0 ? res.items : MOCK_EVENTOS;
-        if (isDueno && recintosIds.length > 0) {
-          const propios = items.filter((e) => recintosIds.includes(e.recintoId));
-          if (propios.length > 0) items = propios;
-        }
-
-        setEventos(items);
-        if (items.length > 0) {
-          setSelectedEventoId(items[0].id);
-        }
-      } catch {
-        setEventos(MOCK_EVENTOS);
-        setSelectedEventoId(MOCK_EVENTOS[0].id);
+        const [items, recintos] = await Promise.all([api.getEventosAdmin(), isDueno ? api.getRecintos() : Promise.resolve([])]);
+        const ids = new Set(recintos.map(r => r.id));
+        const visibles = isDueno ? items.filter(e => ids.has(e.recintoId)) : items;
+        if (!active) return;
+        setEventos(visibles);
+        setSelectedEventoId(visibles[0]?.id ?? null);
+      } catch (err: any) {
+        if (active) { setEventos([]); setSelectedEventoId(null); setLoadError(err?.detail || 'No se pudieron cargar los eventos.'); }
       }
     };
     init();
+    return () => { active = false; };
   }, [isDueno]);
 
-  // Cargar localidades cuando cambia el evento
   useEffect(() => {
-    if (!selectedEventoId) return;
-    const ev = eventos.find((e) => e.id === selectedEventoId);
-    if (!ev) return;
-
-    api.getLocalidades(ev.recintoId).then((locs) => {
-      setLocalidades(locs || []);
-      if (locs && locs.length > 0) {
-        setSelectedLocalidadId(locs[0].id);
-      } else {
-        setSelectedLocalidadId(null);
-        setDistribucion(null);
-      }
-    }).catch(() => {
-      setLocalidades([]);
-      setSelectedLocalidadId(null);
-    });
+    let active = true;
+    setLoading(false);
+    setLocalidades([]);
+    setSelectedLocalidadId(null);
+    setDistribucion(null);
+    setSelectedSilla(null);
+    setGeneradorModalOpen(false);
+    const ev = eventos.find(e => e.id === selectedEventoId);
+    if (ev) api.getLocalidades(ev.recintoId).then(locs => {
+      if (active) { setLocalidades(locs); setSelectedLocalidadId(locs[0]?.id ?? null); }
+    }).catch((err: any) => { if (active) setLoadError(err?.detail || 'No se pudieron cargar las localidades.'); });
+    return () => { active = false; };
   }, [selectedEventoId, eventos]);
 
-  // Cargar distribución cuando cambia evento o localidad
-  const fetchDistribucion = async () => {
-    if (!selectedEventoId || !selectedLocalidadId) return;
-    setLoading(true);
-    try {
-      const dist = await api.getDistribucion(selectedEventoId, selectedLocalidadId);
-      setDistribucion(dist);
-    } catch {
-      // Distribución mock de demostración si aún no se ha persistido en backend
-      const mockMesas: MesaDto[] = [
-        { id: 1, numero: 1, capacidad: 4, x: 120, y: 100, radio: 35 },
-        { id: 2, numero: 2, capacidad: 4, x: 280, y: 100, radio: 35 },
-        { id: 3, numero: 3, capacidad: 4, x: 440, y: 100, radio: 35 },
-        { id: 4, numero: 4, capacidad: 4, x: 120, y: 240, radio: 35 },
-        { id: 5, numero: 5, capacidad: 4, x: 280, y: 240, radio: 35 },
-        { id: 6, numero: 6, capacidad: 4, x: 440, y: 240, radio: 35 },
-      ];
-
-      const mockSillas: SillaDto[] = [];
-      let sId = 1;
-      mockMesas.forEach((m) => {
-        for (let i = 1; i <= m.capacidad; i++) {
-          const angle = ((i - 1) * (360 / m.capacidad) * Math.PI) / 180;
-          mockSillas.push({
-            id: sId++,
-            mesaId: m.id,
-            numero: i,
-            x: m.x + Math.cos(angle) * (m.radio + 16),
-            y: m.y + Math.sin(angle) * (m.radio + 16),
-            estado: sId === 3 || sId === 8 ? 'BLOQUEADO' : 'DISPONIBLE'
-          });
-        }
-      });
-
-      setDistribucion({
-        eventoId: selectedEventoId,
-        localidadId: selectedLocalidadId,
-        publicado: false,
-        mesas: mockMesas,
-        sillas: mockSillas
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (selectedEventoId && selectedLocalidadId) {
-      fetchDistribucion();
-    }
+    let active = true;
+    setDistribucion(null);
+    if (!selectedEventoId || !selectedLocalidadId) return;
+    setLoadError(null);
+    setLoading(true);
+    api.getDistribucion(selectedEventoId, selectedLocalidadId).then(dist => {
+      if (active) setDistribucion(dist);
+    }).catch((err: any) => {
+      if (active && err?.status !== 404) setLoadError(err?.detail || 'No se pudo cargar la distribución.');
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [selectedEventoId, selectedLocalidadId]);
 
   // --- ACCIONES ---
   const handleToggleBloqueo = async (silla: SillaDto) => {
-    if (!selectedEventoId || !selectedLocalidadId) return;
+    if (saving || !selectedEventoId || !selectedLocalidadId || !['DISPONIBLE', 'BLOQUEADO'].includes(silla.estado)) return;
+    setSaving(true);
     try {
       if (silla.estado === 'BLOQUEADO') {
         await api.desbloquearAsiento(selectedEventoId, selectedLocalidadId, [silla.id]);
@@ -176,25 +123,26 @@ export const AdminSeating: React.FC = () => {
       setSelectedSilla(null);
     } catch (err: any) {
       showFeedback(err?.detail || 'Error al alternar bloqueo de asiento.', 'error');
-    }
+    } finally { setSaving(false); }
   };
 
   const handlePublicarDistribucion = async () => {
-    if (!selectedEventoId || !selectedLocalidadId) return;
+    if (!selectedEventoId || !selectedLocalidadId || !distribucion?.sillas.length || saving) return;
     if (!confirm('¿Deseas publicar y congelar esta distribución? Esta acción concilia cupos atómicamente y no admite reversión si hay compras activas.')) return;
 
+    setSaving(true);
     try {
       await api.publicarDistribucion(selectedEventoId, selectedLocalidadId);
       showFeedback('¡Distribución publicada exitosamente! Silletería disponible para venta.');
       setDistribucion((prev) => prev ? { ...prev, publicado: true } : prev);
     } catch (err: any) {
       showFeedback(err?.detail || 'Error al publicar distribución.', 'error');
-    }
+    } finally { setSaving(false); }
   };
 
   const handleGenerarLayout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEventoId || !selectedLocalidadId) return;
+    if (!selectedEventoId || !selectedLocalidadId || distribucion?.publicado || saving || loadError) return;
 
     const nuevasMesas: MesaDto[] = [];
     const nuevasSillas: SillaDto[] = [];
@@ -256,15 +204,17 @@ export const AdminSeating: React.FC = () => {
       sillas: nuevasSillas
     };
 
+    setSaving(true);
     try {
-      await api.guardarDistribucion(selectedEventoId, selectedLocalidadId, payload);
-      showFeedback('Nuevo layout generado y guardado en borrador.');
-    } catch {
-      showFeedback('Layout generado (modo local ilustrativo).');
-    }
+      const guardada = await api.guardarDistribucion(selectedEventoId, selectedLocalidadId, payload);
+      if (!guardada || !Array.isArray(guardada.sillas) || !Array.isArray(guardada.mesas)) throw { detail: 'El servidor no confirmó la distribución guardada.' };
+      setDistribucion(guardada);
+      setGeneradorModalOpen(false);
+      showFeedback('Nuevo layout guardado en borrador.');
+    } catch (err: any) {
+      showFeedback(err?.detail || 'No se pudo guardar la distribución. Se conserva el plano anterior.', 'error');
+    } finally { setSaving(false); }
 
-    setDistribucion(payload);
-    setGeneradorModalOpen(false);
   };
 
   const totalSillas = distribucion?.sillas.length || 0;
@@ -274,6 +224,7 @@ export const AdminSeating: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <LoadState loading={loading} error={loadError} empty={!eventos.length} emptyMessage="No hay eventos disponibles para gestionar." />
       {/* Toast Feedback */}
       {feedback && (
         <div style={{
@@ -331,6 +282,7 @@ export const AdminSeating: React.FC = () => {
               Evento:
             </label>
             <select
+              disabled={saving}
               value={selectedEventoId || ''}
               onChange={(e) => setSelectedEventoId(Number(e.target.value))}
               className="input-base"
@@ -347,6 +299,7 @@ export const AdminSeating: React.FC = () => {
               Localidad del Recinto:
             </label>
             <select
+              disabled={saving}
               value={selectedLocalidadId || ''}
               onChange={(e) => setSelectedLocalidadId(Number(e.target.value))}
               className="input-base"
@@ -362,6 +315,7 @@ export const AdminSeating: React.FC = () => {
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
+            disabled={loading || saving || !!loadError || !selectedEventoId || !selectedLocalidadId || distribucion?.publicado}
             onClick={() => setGeneradorModalOpen(true)}
             className="btn btn-sm btn-outline"
           >
@@ -369,7 +323,7 @@ export const AdminSeating: React.FC = () => {
           </button>
           <button
             onClick={handlePublicarDistribucion}
-            disabled={distribucion?.publicado}
+            disabled={loading || saving || !!loadError || !distribucion?.sillas.length || distribucion?.publicado}
             className="btn btn-sm btn-primary"
             style={{ backgroundColor: distribucion?.publicado ? 'var(--text-muted)' : 'var(--accent-emerald)' }}
           >
@@ -542,6 +496,7 @@ export const AdminSeating: React.FC = () => {
             </button>
             {selectedSilla && selectedSilla.estado !== 'VENDIDO' && selectedSilla.estado !== 'RESERVADO' && (
               <button
+                disabled={saving}
                 onClick={() => handleToggleBloqueo(selectedSilla)}
                 className="btn btn-primary"
                 style={{
@@ -644,7 +599,7 @@ export const AdminSeating: React.FC = () => {
             <button type="button" onClick={() => setGeneradorModalOpen(false)} className="btn btn-outline" style={{ flex: 1 }}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+            <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
               Generar y Guardar Borrador
             </button>
           </div>

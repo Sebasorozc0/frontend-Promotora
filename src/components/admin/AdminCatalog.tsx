@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { CategoriaDetalleDto, PresentadorDetalleDto, EventoCatalogo, EventoPresentadorItemDto } from '../../types/api';
+import { LoadState } from '../common/LoadState';
 import { Modal } from '../common/Modal';
 import { 
   Tag, 
@@ -17,6 +18,8 @@ import {
 } from 'lucide-react';
 
 export const AdminCatalog: React.FC = () => {
+  const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
+  const clearError = (key: string) => setLoadErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
   const [subTab, setSubTab] = useState<'CATEGORIAS' | 'PRESENTADORES' | 'EVENTOS_PRESENTADORES'>('CATEGORIAS');
 
   // --- CATEGORÍAS STATE ---
@@ -65,10 +68,12 @@ export const AdminCatalog: React.FC = () => {
   // --- CARGA INICIAL ---
   const fetchCategorias = async () => {
     setLoadingCategorias(true);
+    clearError('categorias');
     try {
       const data = await api.getCategorias();
       setCategorias(data || []);
     } catch (e: any) {
+      setLoadErrors(prev => ({...prev, categorias: (e as any)?.detail || 'No se pudieron cargar los datos de categorias.'}));
       showFeedback('Error cargando categorías: ' + (e?.detail || e.message), 'error');
     } finally {
       setLoadingCategorias(false);
@@ -77,10 +82,12 @@ export const AdminCatalog: React.FC = () => {
 
   const fetchPresentadores = async () => {
     setLoadingPresentadores(true);
+    clearError('presentadores');
     try {
       const res = await api.getPresentadores();
       setPresentadores(res || []);
     } catch (e: any) {
+      setLoadErrors(prev => ({...prev, presentadores: (e as any)?.detail || 'No se pudieron cargar los datos de presentadores.'}));
       showFeedback('Error cargando presentadores: ' + (e?.detail || e.message), 'error');
     } finally {
       setLoadingPresentadores(false);
@@ -88,23 +95,29 @@ export const AdminCatalog: React.FC = () => {
   };
 
   const fetchEventos = async () => {
+    clearError('eventos');
     try {
-      const res = await api.getEventos({ pageSize: 50 });
-      setEventos(res.items || []);
-      if (res.items?.length > 0 && !selectedEventoId) {
-        setSelectedEventoId(res.items[0].id);
+      const items = await api.getEventosAdmin();
+      setEventos(items);
+      if (items.length > 0 && !selectedEventoId) {
+        setSelectedEventoId(items[0].id);
       }
     } catch (e) {
-      console.warn('Error cargando eventos:', e);
+      setLoadErrors(prev => ({...prev, eventos: (e as any)?.detail || 'No se pudieron cargar los datos de eventos.'}));
+      setEventos([]);
+      showFeedback((e as any)?.detail || 'No se pudieron cargar los eventos de gestión.', 'error');
     }
   };
 
   const fetchEventoPresentadores = async (eventoId: number) => {
+    clearError('asociaciones');
     try {
       const data = await api.getEventoPresentadores(eventoId);
       setEventoPresentadores(data || []);
     } catch (e: any) {
+      setLoadErrors(prev => ({...prev, asociaciones: (e as any)?.detail || 'No se pudieron cargar los datos de asociaciones.'}));
       setEventoPresentadores([]);
+      showFeedback(e?.detail || 'No se pudieron cargar las asociaciones.', 'error');
     }
   };
 
@@ -267,6 +280,10 @@ export const AdminCatalog: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <LoadState error={Object.values(loadErrors).join(' · ')} onRetry={() => {
+        fetchCategorias(); fetchPresentadores(); fetchEventos();
+        if (selectedEventoId) fetchEventoPresentadores(selectedEventoId);
+      }} />
       {/* Notificación Toast */}
       {feedback && (
         <div style={{
@@ -447,7 +464,7 @@ export const AdminCatalog: React.FC = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="badge badge-categoria" style={{ fontSize: '0.65rem' }}>TALENTO</span>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-amber)' }}>
-                          ★ {(p.promedioCalificacion || 5.0).toFixed(1)}
+                          ★ {p.promedioCalificacion != null ? p.promedioCalificacion.toFixed(1) : 'Sin reseñas'}
                         </span>
                       </div>
                       <h4 style={{ fontSize: '1.15rem', marginTop: '4px' }}>{p.nombreArtistico}</h4>

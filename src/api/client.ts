@@ -73,143 +73,82 @@ class ApiClient {
     return this.refreshToken;
   }
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {},
-    customHeaders: Record<string, string> = {}
-  ): Promise<T> {
-    const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...customHeaders,
-    };
-
-    const currentToken = this.getAccessToken();
-    if (currentToken) {
-      headers['Authorization'] = `Bearer ${currentToken}`;
-    }
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
-
-      if (response.status === 401 && this.refreshToken) {
-        // Intentar rotación de token
-        const renewed = await this.tryRefreshToken();
-        if (renewed) {
-          headers['Authorization'] = `Bearer ${this.accessToken}`;
-          const retryRes = await fetch(url, { ...options, headers });
-          if (retryRes.ok) {
-            return (await retryRes.json()) as T;
-          }
-        }
-      }
-
-      if (!response.ok) {
-        let errorData: any = {};
-        try {
-          errorData = await response.json();
-        } catch {
-          errorData = { detail: response.statusText, status: response.status };
-        }
-        throw errorData;
-      }
-
-      if (response.status === 204) {
-        return {} as T;
-      }
-
-      return (await response.json()) as T;
-    } catch (err: any) {
-      // Si la API no está disponible (ej: desarrollo sin docker levantado), recurrir a mocks ilustrativos
-      if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        console.warn(`[API Client] Error conectando a ${url}. Usando fallback ilustrativo para desarrollo.`, err);
-        return this.getMockResponse<T>(endpoint, options);
-      }
-      throw err;
-    }
+  private expireSession() {
+    this.setTokens(null, null);
+    window.dispatchEvent(new CustomEvent('promotora:session-expired'));
   }
 
-  private async requestFormData<T>(
-    endpoint: string,
-    formData: FormData
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}, customHeaders: Record<string, string> = {}): Promise<T> {
     const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
-    const headers: Record<string, string> = {};
-
-    const currentToken = this.getAccessToken();
-    if (currentToken) {
-      headers['Authorization'] = `Bearer ${currentToken}`;
-    }
-
+    const headers = new Headers(options.headers);
+    if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
+    Object.entries(customHeaders).forEach(([name, value]) => headers.set(name, value));
+    if (this.getAccessToken()) headers.set('Authorization', `Bearer ${this.getAccessToken()}`);
+    const authEndpoint = /^\/auth\/(login|registro|refresh)$/.test(endpoint);
+    let response: Response;
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
-
-      if (!response.ok) {
-        let errorData: any = {};
-        try {
-          errorData = await response.json();
-        } catch {
-          errorData = { detail: response.statusText, status: response.status };
+      response = await fetch(url, { ...options, headers });
+      if (response.status === 401 && !authEndpoint) {
+        if (this.getRefreshToken() && await this.tryRefreshToken()) {
+          headers.set('Authorization', `Bearer ${this.getAccessToken()}`);
+          response = await fetch(url, { ...options, headers });
         }
-        throw errorData;
+        if (response.status === 401) this.expireSession();
       }
-
-      return (await response.json()) as T;
-    } catch (err: any) {
-      if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        console.warn(`[API Client] Error conectando a ${url} (FormData). Usando fallback.`);
-        return this.getMockResponse<T>(endpoint, { method: 'POST', body: formData });
-      }
-      throw err;
+    } catch {
+      throw { status: 0, detail: 'No se pudo conectar con el servidor. Revisa la conexión e inténtalo de nuevo.' };
     }
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({}));
+      const fields = Object.entries(problem.errors || {}).flatMap(([field, messages]) =>
+        (Array.isArray(messages) ? messages : [messages]).map(message => `${field}: ${message}`));
+      throw { ...problem, status: response.status, detail: fields.length ? fields.join(' · ') :
+        problem.detail || problem.title || (response.status === 401 ? 'Tu sesión expiró. Inicia sesión nuevamente.' : `No se pudo completar la solicitud (${response.status}).`) };
+    }
+    if (response.status === 204) return undefined as T;
+    const text = await response.text();
+    return text ? JSON.parse(text) as T : undefined as T;
+  }
+
+  private requestFormData<T>(endpoint: string, formData: FormData): Promise<T> {
+    return this.request<T>(endpoint, { method: 'POST', body: formData });
   }
 
   private async tryRefreshToken(): Promise<boolean> {
-    if (this.refreshPromise) {
-      return this.refreshPromise;
+    if (!this.refreshPromise) {
+      this.refreshPromise = (async () => {
+        try {
+          const res = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: this.getRefreshToken() }),
+          });
+          if (res.ok) {
+            const data = await res.json() as LoginResponse;
+            if (data.accessToken && data.refreshToken) {
+              this.setTokens(data.accessToken, data.refreshToken);
+              return true;
+            }
+          }
+        } catch { /* El llamador comunica el fallo y cierra la sesión. */ }
+        this.expireSession();
+        return false;
+      })().finally(() => { this.refreshPromise = null; });
     }
-
-    this.refreshPromise = (async () => {
-      try {
-        const tokenToRefresh = this.getRefreshToken();
-        if (!tokenToRefresh) {
-          this.setTokens(null, null);
-          return false;
-        }
-
-        const res = await fetch(`${API_BASE}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: tokenToRefresh }),
-        });
-
-        if (res.ok) {
-          const data = (await res.json()) as LoginResponse;
-          this.setTokens(data.accessToken, data.refreshToken);
-          return true;
-        }
-      } catch (err) {
-        console.warn('[ApiClient] Error en refresco de token:', err);
-      } finally {
-        this.refreshPromise = null;
-      }
-
-      this.setTokens(null, null);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('promotora:session-expired'));
-      }
-      return false;
-    })();
-
     return this.refreshPromise;
+  }
+
+  // Reúne todas las páginas para los filtros locales y selectores de gestión.
+  private async listAll<T>(endpoint: string): Promise<T[]> {
+    const items: T[] = [];
+    for (let page = 1; page <= 1000; page++) {
+      const result = await this.request<any>(`${endpoint}${endpoint.includes('?') ? '&' : '?'}page=${page}&pageSize=100`);
+      if (Array.isArray(result)) return result;
+      if (!result || !Array.isArray(result.items)) throw { detail: 'El servidor devolvió una lista con formato inesperado.' };
+      items.push(...result.items);
+      const totalPages = result.totalPaginas ?? result.totalPages;
+      if (totalPages != null ? page >= totalPages : result.total != null ? items.length >= result.total : result.items.length < 100) return items;
+    }
+    throw { detail: 'La lista supera el límite de carga. Acota los resultados.' };
   }
 
   // --- Auth ---
@@ -218,7 +157,7 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    this.setTokens(res.accessToken, res.refreshToken);
+    this.setTokens(res.accessToken, res.refreshToken ?? null);
     return res;
   }
 
@@ -266,27 +205,27 @@ class ApiClient {
       nombreArtistico: p.nombreArtistico || p.nombre || 'Artista',
       biografia: p.biografia || '',
       fotoPerfilUrl: p.fotoPerfilUrl || p.imagenUrl || null,
-      promedioCalificacion: typeof p.promedioCalificacion === 'number' ? p.promedioCalificacion : 5.0,
+      promedioCalificacion: typeof p.promedioCalificacion === 'number' ? p.promedioCalificacion : 0,
     }));
 
     return {
       id: raw.id,
       titulo: raw.titulo || raw.nombre || 'Evento ASA',
       descripcion: raw.descripcion || '',
-      categoriaId: raw.categoriaId || (typeof raw.categoria === 'object' ? raw.categoria?.id : 1),
+      categoriaId: raw.categoriaId || (typeof raw.categoria === 'object' ? raw.categoria?.id : 0),
       categoriaNombre: raw.categoriaNombre || (typeof raw.categoria === 'object' ? raw.categoria?.nombre : raw.categoria) || 'General',
-      recintoId: raw.recintoId || (typeof raw.recinto === 'object' ? raw.recinto?.id : 1),
+      recintoId: raw.recintoId || (typeof raw.recinto === 'object' ? raw.recinto?.id : 0),
       recintoNombre: raw.recintoNombre || (typeof raw.recinto === 'object' ? raw.recinto?.nombre : raw.recinto) || 'Recinto',
       recintoCiudad: raw.recintoCiudad || (typeof raw.recinto === 'object' ? raw.recinto?.ciudad : raw.ciudad) || 'Guatemala',
       fechaInicio: raw.fechaInicio,
-      fechaFin: raw.fechaFin || raw.fechaInicio,
+      fechaFin: raw.fechaFin || '',
       aperturaPuertas: raw.aperturaPuertas || raw.fechaInicio,
-      imagenFlyerUrl: raw.imagenFlyerUrl || raw.imagenUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+      imagenFlyerUrl: raw.imagenFlyerUrl || raw.imagenUrl || '',
       estado: raw.estado || 'EN_VENTA',
-      precioMinimo: typeof raw.precioMinimo === 'number' ? raw.precioMinimo : 100.0,
-      precioMaximo: typeof raw.precioMaximo === 'number' ? raw.precioMaximo : 350.0,
-      cupoTotal: typeof raw.cupoTotal === 'number' ? raw.cupoTotal : 1000,
-      cupoDisponible: typeof raw.cupoDisponible === 'number' ? raw.cupoDisponible : 500,
+      precioMinimo: typeof raw.precioMinimo === 'number' ? raw.precioMinimo : 0,
+      precioMaximo: typeof raw.precioMaximo === 'number' ? raw.precioMaximo : 0,
+      cupoTotal: typeof raw.cupoTotal === 'number' ? raw.cupoTotal : 0,
+      cupoDisponible: typeof raw.cupoDisponible === 'number' ? raw.cupoDisponible : 0,
       maxBoletosPorCompra: raw.maxBoletosPorCompra || 6,
       presentadores,
     };
@@ -356,8 +295,7 @@ class ApiClient {
 
   // --- Recintos & Localidades con Geometría Vectorial ---
   public async getRecintos(): Promise<RecintoPublico[]> {
-    const res = await this.request<any>('/recintos');
-    return Array.isArray(res) ? res : res.items || [];
+    return this.listAll<RecintoPublico>('/recintos');
   }
 
   public async getRecinto(id: number): Promise<RecintoPublico> {
@@ -404,8 +342,7 @@ class ApiClient {
   }
 
   public async getLocalidades(recintoId: number): Promise<LocalidadMapa[]> {
-    const res = await this.request<any>(`/recintos/${recintoId}/localidades`);
-    return Array.isArray(res) ? res : res.items || [];
+    return this.listAll<LocalidadMapa>(`/recintos/${recintoId}/localidades`);
   }
 
   public async crearLocalidad(recintoId: number, data: DatosLocalidadRequest): Promise<LocalidadMapa> {
@@ -485,101 +422,10 @@ class ApiClient {
 
   // --- IA José ---
   public async consultarIa(consulta: string, sessionId?: string): Promise<ConsultaIaResponse> {
-    try {
-      return await this.request<ConsultaIaResponse>('/ia/consultas', {
-        method: 'POST',
-        body: JSON.stringify({
-          pregunta: consulta,
-          consulta,
-          sessionId: sessionId || null,
-        }),
-      });
-    } catch (err: any) {
-      // Si la IA no está habilitada en el backend (código 422 ia.deshabilitada) o no hay claves cloud configuradas en .env
-      if (
-        err?.status === 422 ||
-        (err?.codes && Array.isArray(err.codes) && err.codes.includes('ia.deshabilitada')) ||
-        (typeof err?.detail === 'string' && err.detail.includes('IA no está habilitada'))
-      ) {
-        console.info('[ApiClient] Backend reporta IA deshabilitada (sin claves cloud Ollama/Gemini en .env). Respondiendo con base de conocimiento oficial local.');
-        return this.generarRespuestaLocalJose(consulta);
-      }
-      throw err;
-    }
+    return this.request<ConsultaIaResponse>('/ia/consultas', {
+      method: 'POST', body: JSON.stringify({ pregunta: consulta, consulta, sessionId: sessionId || null }),
+    });
   }
-
-  private generarRespuestaLocalJose(consulta: string): ConsultaIaResponse {
-    const q = consulta.toLowerCase();
-
-    if (q.includes('confirmado') || q.includes('evento') || q.includes('cartelera') || q.includes('mes') || q.includes('espectaculo')) {
-      return {
-        respuesta: "Actualmente en cartelera tenemos disponibles los siguientes espectáculos oficiales:\n\n• **Concierto de Rock Sinfónico** (Explanada Cardales de Cayalá, Ciudad de Guatemala). Entradas desde Q 350.00.\n• **Festival Electrónico Sunset Beats** (Autódromo Los Volcanes, Escuintla). Entradas desde Q 200.00.\n• **Noche de Gala: Ópera y Lírica** (Teatro Nacional Miguel Ángel Asturias). Entradas desde Q 150.00.\n\nPuedes explorar el catálogo completo y adquirir tus entradas directamente desde la sección Cartelera.",
-        fuentes: [
-          {
-            documento: 'Catálogo Oficial de Eventos 2026',
-            extracto: 'Eventos aprobados y vigentes con venta habilitada en plataforma promotora.',
-            pagina: 1,
-          },
-        ],
-        tiempoRespuestaMs: 120,
-      };
-    }
-
-    if (q.includes('reembolso') || q.includes('cancelac') || q.includes('devoluc')) {
-      return {
-        respuesta: "Nuestra política oficial de reembolsos establece las siguientes normas:\n\n1. **Eventos cancelados o reprogramados:** Se procesa el reembolso íntegro del 100% del valor del boleto automáticamente o a solicitud del usuario.\n2. **Cancelación voluntaria:** Es posible solicitar el reembolso hasta 48 horas antes de la apertura de puertas del evento desde tu panel de 'Mis Compras'.\n3. **Comisiones de servicio:** Las comisiones administrativas bancarias pueden no ser reembolsables según los términos y condiciones de la pasarela.",
-        fuentes: [
-          {
-            documento: 'Términos y Condiciones Generales - Sección 8: Reembolsos',
-            extracto: 'El usuario tiene derecho a solicitar devolución dentro del plazo reglamentario previo a la apertura de puertas.',
-            pagina: 14,
-          },
-        ],
-        tiempoRespuestaMs: 140,
-      };
-    }
-
-    if (q.includes('qr') || q.includes('puerta') || q.includes('validac') || q.includes('acceso') || q.includes('entrada')) {
-      return {
-        respuesta: "La validación de acceso en puerta funciona con tecnología de **Código QR Criptográfico Dinámico HMAC**:\n\n• Cada boleto digital genera un código QR firmado criptográficamente que se refresca periódicamente para evitar capturas de pantalla y reventas fraudulentas.\n• En la entrada del recinto, el personal escanea tu QR mediante terminales autorizadas que verifican la firma y consumen el boleto en tiempo real.\n• Asegúrate de tener la app abierta o tu boleto descargado antes de ingresar a los controles de acceso.",
-        fuentes: [
-          {
-            documento: 'Manual de Seguridad de Accesos y Control en Puerta v2.4',
-            extracto: 'Validación biométrica y criptográfica HMAC-SHA256 para códigos QR dinámicos en accesos.',
-            pagina: 5,
-          },
-        ],
-        tiempoRespuestaMs: 150,
-      };
-    }
-
-    if (q.includes('platinum') || q.includes('vip') || q.includes('cayal') || q.includes('explanada')) {
-      return {
-        respuesta: "El acceso **Platinum VIP** en Explanada Cardales de Cayalá incluye los siguientes beneficios exclusivos:\n\n• Asientos numerados con silletería ergonómica frente al escenario principal.\n• Acceso por carril preferencial express sin colas.\n• Servicio de meseros en mesa y barra privada de cortesía.\n• Estacionamiento VIP reservado con seguridad privada.",
-        fuentes: [
-          {
-            documento: 'Ficha Técnica de Localidades: Explanada Cayalá',
-            extracto: 'Localidad Platinum VIP cuenta con aforo restringido, mesas asignadas y atenciones premium.',
-            pagina: 2,
-          },
-        ],
-        tiempoRespuestaMs: 110,
-      };
-    }
-
-    return {
-      respuesta: "Hola, soy José. He revisado la información oficial de la promotora para tu consulta:\n\nPuedo ayudarte con detalles sobre espectáculos vigentes, normativas de acceso al recinto, silletería numerada, compras de boletos y políticas de reembolso.\n\nSi deseas consultar sobre un evento o localidad específica, indícame el nombre o lugar y con gusto te proporciono todos los detalles reglamentarios.",
-      fuentes: [
-        {
-          documento: 'Guía de Información al Asistente y Normativas de Promotora',
-          extracto: 'Atención automatizada fundamentada en documentos y reglamentos vigentes.',
-          pagina: 1,
-        },
-      ],
-      tiempoRespuestaMs: 95,
-    };
-  }
-
 
   // --- Usuarios y Perfiles (6 endpoints) ---
   public async getPerfil(id: number): Promise<UsuarioDetalleDto> {
@@ -617,8 +463,7 @@ class ApiClient {
 
   // --- Categorías (5 endpoints) ---
   public async getCategorias(): Promise<CategoriaDetalleDto[]> {
-    const res = await this.request<any>('/categorias');
-    return Array.isArray(res) ? res : res?.items || [];
+    return this.listAll<CategoriaDetalleDto>('/categorias');
   }
 
   public async getCategoria(id: number): Promise<CategoriaDetalleDto> {
@@ -645,8 +490,7 @@ class ApiClient {
 
   // --- Presentadores / Artistas (6 endpoints) ---
   public async getPresentadores(): Promise<PresentadorDetalleDto[]> {
-    const res = await this.request<any>('/presentadores');
-    return Array.isArray(res) ? res : res?.items || [];
+    return this.listAll<PresentadorDetalleDto>('/presentadores');
   }
 
   public async getPresentador(id: number): Promise<PresentadorDetalleDto> {
@@ -708,9 +552,20 @@ class ApiClient {
 
   // --- Gestión de Eventos Admin (6 endpoints) ---
   public async getEventosAdmin(): Promise<EventoCatalogo[]> {
-    const res = await this.request<any>('/eventos');
-    return Array.isArray(res) ? res : res.items || [];
+    const items = await this.listAll<any>('/eventos');
+    return items.map(raw => ({ ...raw, ...this.normalizarEventoCatalogo(raw) }));
   }
+
+  public async getEventoAdmin(id: number): Promise<EventoCatalogo & { fechaInicioVenta?: string; fechaFinVenta?: string }> {
+    const raw = await this.request<any>(`/eventos/${id}`);
+    return { ...raw, ...this.normalizarEventoCatalogo(raw) };
+  }
+
+  public getTodosUsuarios(): Promise<UsuarioDetalleDto[]> { return this.listAll('/usuarios'); }
+  public getTodosDocumentosRag(): Promise<DocumentoRagDto[]> { return this.listAll('/ia/documentos'); }
+  public getTodasResenas(estado?: string): Promise<ResenaPublica[]> { return this.listAll(`/resenas${estado ? '?estado=' + encodeURIComponent(estado) : ''}`); }
+  public getTodosMovimientos(id: number): Promise<MovimientoFinancieroDto[]> { return this.listAll(`/cuentas/${id}/movimientos`); }
+
 
   public async crearEvento(data: any): Promise<EventoCatalogo> {
     return this.request<EventoCatalogo>('/eventos', {
@@ -779,8 +634,7 @@ class ApiClient {
 
   // --- Finanzas, Cuentas, Liquidaciones y Reembolsos (6 endpoints) ---
   public async getCuentas(): Promise<CuentaFinancieraDto[]> {
-    const res = await this.request<any>('/cuentas');
-    return Array.isArray(res) ? res : res.items || [];
+    return this.listAll<CuentaFinancieraDto>('/cuentas');
   }
 
   public async getCuenta(id: number): Promise<CuentaFinancieraDto> {
@@ -920,174 +774,6 @@ class ApiClient {
     });
   }
 
-  // --- Fallback Mocks para visualización inmediata si el backend no está corriendo ---
-  private getMockResponse<T>(endpoint: string, options: RequestInit): T {
-    // Extraer recintoId de URLs del tipo /recintos/{id}/...
-    const recintoMatch = endpoint.match(/\/recintos\/(\d+)/);
-    const mockRecintoId = recintoMatch ? Number(recintoMatch[1]) : 1;
-
-    if (endpoint.includes('/catalogo/eventos/') && !endpoint.includes('?')) {
-      return MOCK_EVENTO_DETALLE as unknown as T;
-    }
-    if (endpoint.includes('/catalogo/eventos')) {
-      return {
-        items: MOCK_EVENTOS,
-        pagina: 1,
-        tamanoPagina: 10,
-        total: MOCK_EVENTOS.length,
-        totalPaginas: 1,
-      } as unknown as T;
-    }
-    if (endpoint.includes('/imagen-plano')) {
-      return { url: '/venue_blueprint.jpg' } as unknown as T;
-    }
-    if (endpoint.includes('/mapa')) {
-      return MOCK_MAPA as unknown as T;
-    }
-    if (endpoint.includes('/recintos') && endpoint.includes('/localidades')) {
-      // PUT: actualizar localidad existente
-      if (options.method === 'PUT') {
-        try {
-          const body = typeof options.body === 'string' ? JSON.parse(options.body) : {};
-          // Extrae el ID de la URL: /recintos/{rid}/localidades/{id}
-          const parts = endpoint.split('/');
-          const id = Number(parts[parts.length - 1]);
-          const idx = MOCK_MAPA.localidades.findIndex((l) => l.id === id);
-          const actualizada: LocalidadMapa = {
-            id: isNaN(id) ? Math.floor(Math.random() * 9000) + 1000 : id,
-            recintoId: mockRecintoId,
-            nombre: body.nombre || 'Zona actualizada',
-            capacidad: body.capacidad || 100,
-            color: body.color || '#FF3823',
-            colorHex: body.color || '#FF3823',
-            geometria: body.geometria,
-            cupoDisponible: body.capacidad || 100,
-            precioMinimo: 350.0,
-            activo: true,
-          };
-          if (idx >= 0) MOCK_MAPA.localidades[idx] = actualizada;
-          return actualizada as unknown as T;
-        } catch {
-          return {} as T;
-        }
-      }
-      // DELETE: eliminar localidad
-      if (options.method === 'DELETE') {
-        try {
-          const parts = endpoint.split('/');
-          const id = Number(parts[parts.length - 1]);
-          const idx = MOCK_MAPA.localidades.findIndex((l) => l.id === id);
-          if (idx >= 0) MOCK_MAPA.localidades.splice(idx, 1);
-        } catch { /* ignorar */ }
-        return {} as T;
-      }
-      // GET: listar localidades
-      if (options.method === 'GET' || !options.method) {
-        return { items: MOCK_MAPA.localidades, page: 1, pageSize: 50, total: MOCK_MAPA.localidades.length } as unknown as T;
-      }
-      // POST: crear localidad
-      try {
-        const body = typeof options.body === 'string' ? JSON.parse(options.body) : {};
-        const nueva: LocalidadMapa = {
-          id: Math.floor(Math.random() * 9000) + 1000,
-          recintoId: mockRecintoId,
-          nombre: body.nombre || 'Nueva Zona',
-          capacidad: body.capacidad || 100,
-          color: body.color || '#FF3823',
-          colorHex: body.color || '#FF3823',
-          geometria: body.geometria,
-          cupoDisponible: body.capacidad || 100,
-          precioMinimo: 350.0,
-          activo: true,
-        };
-        MOCK_MAPA.localidades.push(nueva);
-        return nueva as unknown as T;
-      } catch {
-        return {} as T;
-      }
-    }
-    if (endpoint.includes('/recintos') && !endpoint.includes('/localidades')) {
-      return MOCK_RECINTOS as unknown as T;
-    }
-    if (endpoint.includes('/compras') && options.method === 'POST') {
-      const publicId = 'compra-' + Math.random().toString(36).substring(2, 9);
-      return {
-        id: Math.floor(Math.random() * 1000),
-        publicId,
-        eventoId: 1,
-        eventoTitulo: 'Festival de Primavera 2026',
-        estado: 'PENDIENTE',
-        subtotal: 700.0,
-        comision: 70.0,
-        impuestos: 92.4,
-        total: 862.4,
-        expiraEn: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        creadoEn: new Date().toISOString(),
-        items: [
-          {
-            id: 1,
-            tipoEntradaId: 1,
-            tipoEntradaNombre: 'VIP Experience',
-            cantidad: 2,
-            precioUnitario: 350.0,
-            subtotal: 700.0,
-          },
-        ],
-      } as unknown as T;
-    }
-    if (endpoint.includes('/compras/')) {
-      return {
-        id: 101,
-        publicId: 'compra-demo',
-        eventoId: 1,
-        eventoTitulo: 'Festival de Primavera 2026',
-        estado: 'COMPLETADA',
-        subtotal: 700.0,
-        comision: 70.0,
-        impuestos: 92.4,
-        total: 862.4,
-        expiraEn: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        creadoEn: new Date().toISOString(),
-        items: [
-          {
-            id: 1,
-            tipoEntradaId: 1,
-            tipoEntradaNombre: 'VIP Experience',
-            cantidad: 2,
-            precioUnitario: 350.0,
-            subtotal: 700.0,
-          },
-        ],
-        boletosEmitidos: 2,
-      } as unknown as T;
-    }
-    if (endpoint.includes('/boletos')) {
-      return MOCK_BOLETOS as unknown as T;
-    }
-    if (endpoint.includes('/ia/consultas')) {
-      return {
-        respuesta:
-          '¡Hola! Soy José, el asistente oficial de la promotora. Actualmente tenemos confirmados eventos destacados como el "Festival de Primavera 2026" en Explanada Cayalá y la "Gran Carrera Nocturna 10K/21K". Los boletos VIP y General están disponibles con política de compra protegida y asignación digital instantánea.',
-        fuentes: [
-          {
-            documento: 'Reglamento_General_Eventos_2026.pdf',
-            pagina: 3,
-            extracto: 'Las entradas adquiridas a través del canal oficial cuentan con código QR único no transferible.',
-          },
-          {
-            documento: 'Calendario_Temporada_2026.docx',
-            pagina: 1,
-            extracto: 'Eventos masivos de apertura inician el primer fin de semana de noviembre.',
-          },
-        ],
-        tiempoRespuestaMs: 380,
-      } as unknown as T;
-    }
-    if (endpoint.includes('/resenas')) {
-      return MOCK_RESENAS as unknown as T;
-    }
-    return [] as unknown as T;
-  }
 }
 
 export const api = new ApiClient();
@@ -1221,7 +907,7 @@ export const MOCK_EVENTO_DETALLE: DetalleEventoPublico = {
       nombre: 'PLATINUM VIP (Frente al Escenario)',
       precioUnitario: 850.0,
       cupoDisponible: 120,
-      cupoTotal: 500,
+      cupoTotal: 0,
       localidadId: 1,
       localidadNombre: 'Zona VIP Front Stage',
     },
