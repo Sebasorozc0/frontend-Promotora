@@ -1,6 +1,6 @@
 // Tipos del modelo de dominio basados en backend ASP.NET Core (Fases 1-9)
 
-export type RolUsuario = 'CLIENTE' | 'ADMINISTRADOR' | 'DUENO_RECINTO';
+export type RolUsuario = 'CLIENTE' | 'ADMINISTRADOR' | 'DUENO_RECINTO' | 'VALIDADOR_BOLETOS';
 
 export type EstadoEvento = 'BORRADOR' | 'PROGRAMADO' | 'EN_VENTA' | 'AGOTADO' | 'FINALIZADO' | 'CANCELADO';
 
@@ -64,6 +64,7 @@ export interface PresentadorPublico {
 }
 
 export interface TipoEntradaPublico {
+  numerada?: boolean;
   id: number;
   nombre: string;
   precioUnitario: number;
@@ -77,6 +78,8 @@ export interface TipoEntradaPublico {
 }
 
 export interface EventoCatalogo {
+  fechaInicioVenta?: string;
+  fechaFinVenta?: string;
   id: number;
   titulo: string;
   descripcion: string;
@@ -143,6 +146,7 @@ export interface AsistenteItem {
 }
 
 export interface ItemCompraRequest {
+  asientoIds?: number[];
   tipoEntradaId: number;
   cantidad: number;
   asistentes?: AsistenteItem[];
@@ -308,6 +312,7 @@ export interface PresentadorDetalleDto {
 }
 
 export interface EventoPresentadorItemDto {
+  tipo?: string;
   presentadorId: number;
   nombreArtistico: string;
   biografia?: string | null;
@@ -359,31 +364,7 @@ export interface DocumentoRagDto {
   activo: boolean;
 }
 
-// Distribución de Asientos Numerados
-export interface MesaDto {
-  id: number;
-  numero: number;
-  capacidad: number;
-  x: number;
-  y: number;
-  radio: number;
-  bloqueada?: boolean;
-}
-
-export interface SillaDto {
-  id: number;
-  mesaId?: number | null;
-  numero: number;
-  fila?: string | null;
-  x: number;
-  y: number;
-  estado: 'DISPONIBLE' | 'RESERVADO' | 'VENDIDO' | 'BLOQUEADO';
-}
-
-export interface DistribucionDto {
-  eventoId: number;
-  localidadId: number;
-  publicado: boolean;
-  mesas: MesaDto[];
-  sillas: SillaDto[];
-}
+// Contratos de inventario numerado (coordenadas normalizadas 0..1).
+export interface MesaDto { id: number; etiqueta: string; modalidad: 'COMPLETA' | 'POR_SILLA'; tipoEntradaId: number; x: number; y: number; capacidad: number; }
+export interface SillaDto { id: number; mesaId?: number | null; etiqueta: string; fila?: string | null; tipoEntradaId: number; x: number; y: number; estado: 'DISPONIBLE' | 'RESERVADO' | 'VENDIDO' | 'BLOQUEADO'; }
+export interface DistribucionDto { id: number; eventoId: number; localidadId: number; estado: 'BORRADOR' | 'PUBLICADA'; imagenPlanoUrl?: string; page: number; pageSize: number; totalMesas: number; totalAsientos: number; mesas: MesaDto[]; asientos: SillaDto[]; }

@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:contracts": "node scripts/check-contracts.cjs",
+    "check:layout": "node scripts/check-layout.cjs"
   },
   "dependencies": {
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.61.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",

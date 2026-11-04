@@ -17,7 +17,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [dpi, setDpi] = useState('');
 
   const [cargando, setCargando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -29,7 +28,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setNombre('');
     setApellido('');
     setTelefono('');
-    setDpi('');
     setErrorMsg(null);
     setEsRegistro(false);
     setCargando(false);
@@ -55,7 +53,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     try {
       if (esRegistro) {
-        await registro({ nombre, apellido, email, password, telefono, dpi });
+        await registro({ nombre, apellido, email, password, telefono });
       } else {
         await login(email, password);
       }
@@ -67,18 +65,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleDemoFill = (tipo: 'admin' | 'dueno' | 'cliente') => {
-    if (tipo === 'admin') {
-      setEmail('admin@promotora.gt');
-      setPassword('AdminSeguro2026!');
-    } else if (tipo === 'dueno') {
-      setEmail('dueno.cayala@promotora.gt');
-      setPassword('DuenoCayala2026!');
-    } else {
-      setEmail('testuser@example.com');
-      setPassword('TestPassword2026!');
-    }
-  };
 
   return (
     <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
@@ -161,19 +147,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                <div>
-                  <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
-                    DPI *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="input-brutal"
-                    placeholder="2501 99281 0101"
-                    value={dpi}
-                    onChange={(e) => setDpi(e.target.value)}
-                  />
-                </div>
+
                 <div>
                   <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
                     Teléfono
@@ -211,8 +185,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <input
               type="password"
               required
-              minLength={8}
+              minLength={esRegistro ? 12 : 1}
               className="input-brutal"
+              maxLength={128}
               placeholder="••••••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -227,45 +202,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           >
             {cargando ? <Loader2 size={18} className="spin" /> : esRegistro ? 'Registrarme' : 'Entrar a mi Cuenta'}
           </button>
-
-          {/* Quick Demo Accounts */}
-          <div style={{
-            backgroundColor: 'var(--bg-canvas)',
-            border: '1.5px dashed var(--border-medium)',
-            padding: '12px',
-            marginBottom: '16px',
-            textAlign: 'center'
-          }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-              CREDENCIALES DE PRUEBA RÁPIDA:
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => handleDemoFill('cliente')}
-                className="btn btn-sm btn-outline"
-                style={{ fontSize: '0.68rem', padding: '4px 8px', backgroundColor: '#FFF' }}
-              >
-                Cliente
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoFill('dueno')}
-                className="btn btn-sm btn-outline"
-                style={{ fontSize: '0.68rem', padding: '4px 8px', backgroundColor: '#FFF' }}
-              >
-                Dueño Recinto
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoFill('admin')}
-                className="btn btn-sm btn-outline"
-                style={{ fontSize: '0.68rem', padding: '4px 8px', backgroundColor: '#FFF' }}
-              >
-                Admin
-              </button>
-            </div>
-          </div>
 
           <div style={{ textAlign: 'center' }}>
             <button

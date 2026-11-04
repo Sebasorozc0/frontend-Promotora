@@ -1,208 +1,117 @@
-import React, { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import { X, QrCode, CheckCircle2, XCircle, AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
+import { Modal } from './common/Modal';
 
-interface ScannerModalProps {
-  onClose: () => void;
+export function TicketScanner({ allowManual = true }: { allowManual?: boolean }) {
+  const [camera, setCamera] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string; time?: string; seat?: string } | null>(null);
+  const video = useRef<HTMLVideoElement>(null);
+  const inFlight = useRef(false);
+
+  async function validate(value: string) {
+    const token = value.trim();
+    if (!token || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setCamera(false);
+    setCode('');
+    setResult(null);
+    try {
+      const ticket = await api.validarBoleto(token);
+      const seat = ticket.ubicacion;
+      setResult({
+        ok: true, message: 'Entrada registrada.', time: ticket.fechaUso,
+        seat: seat ? [seat.mesa && `Mesa ${seat.mesa}`, seat.fila && `Fila ${seat.fila}`, `Silla ${seat.silla}`].filter(Boolean).join(' · ') : undefined,
+      });
+    } catch (error) {
+      const problem = error as { detail?: string; status?: number };
+      setResult({ ok: false, message: problem.detail || 'No se pudo confirmar la entrada. Comprueba la conexión.' });
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!camera) return;
+    let active = true;
+    let stream: MediaStream | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const preview = video.current;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const scan = (decode: typeof import('jsqr').default) => {
+      if (!active || !preview || !context) return;
+      if (preview.readyState >= 2 && preview.videoWidth > 0) {
+        const scale = Math.min(1, 960 / preview.videoWidth);
+        const width = Math.round(preview.videoWidth * scale);
+        const height = Math.round(preview.videoHeight * scale);
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+        context.drawImage(preview, 0, 0, width, height);
+        const frame = context.getImageData(0, 0, width, height);
+        const qr = decode(frame.data, width, height, { inversionAttempts: 'dontInvert' });
+        if (qr?.data.trim()) { void validate(qr.data); return; }
+      }
+      timer = setTimeout(() => scan(decode), 150);
+    };
+    const start = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia || !preview || !context) {
+          throw new Error('La cámara requiere HTTPS o localhost y un navegador compatible.');
+        }
+        const opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' } } });
+        if (!active) { opened.getTracks().forEach(track => track.stop()); return; }
+        stream = opened;
+        preview.srcObject = opened;
+        await preview.play();
+        const { default: decode } = await import('jsqr');
+        scan(decode);
+      } catch (error) {
+        if (!active) return;
+        setCameraError(error instanceof DOMException ? 'No se pudo abrir la cámara. Revisa el permiso del navegador y que la cámara esté disponible.' : (error as Error).message);
+        setCamera(false);
+      }
+    };
+    void start();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      stream?.getTracks().forEach(track => track.stop());
+      if (preview) preview.srcObject = null;
+    };
+  }, [camera]);
+
+  return <section aria-label="Escáner de boletos">
+    <p>Apunta la cámara al código QR del boleto. El servidor confirmará si permite el ingreso.</p>
+    <div className="actions">
+      <button className="btn btn-primary" disabled={busy} onClick={() => {
+        setCameraError('');
+        if (!camera) setResult(null);
+        setCamera(!camera);
+      }}>{camera ? 'Apagar cámara' : result ? 'Escanear otro boleto' : 'Activar cámara'}</button>
+    </div>
+    {camera && <video ref={video} playsInline muted aria-label="Vista de la cámara" style={{ width: '100%', maxHeight: 380, background: '#121316' }} />}
+    {cameraError && <p className="notice" role="alert">{cameraError}</p>}
+    {allowManual && <form onSubmit={event => { event.preventDefault(); void validate(code); }}>
+      <label>Código del boleto<input value={code} onChange={event => setCode(event.target.value)} autoComplete="off" /></label>
+      <button className="btn btn-outline" disabled={busy || !code.trim()}>Validar código</button>
+    </form>}
+    {busy && <p role="status">Confirmando entrada…</p>}
+    {result && <div className={result.ok ? 'success-notice' : 'notice'} role="status">
+      <strong>{result.ok ? 'Acceso autorizado' : 'Acceso sin confirmar'}</strong>
+      <p>{result.message}</p>
+      {result.seat && <p>{result.seat}</p>}
+      {result.time && <p>{new Date(result.time).toLocaleString('es-GT')}</p>}
+    </div>}
+  </section>;
 }
 
-export const ScannerModal: React.FC<ScannerModalProps> = ({ onClose }) => {
-  const [codigoQr, setCodigoQr] = useState('');
-  const [cargando, setCargando] = useState(false);
-  const [resultado, setResultado] = useState<{
-    tipo: 'EXITO' | 'RECHAZADO' | 'YA_USADO';
-    mensaje: string;
-    detalle?: any;
-  } | null>(null);
-
-  const sampleTokens = [
-    { label: 'Boleto Válido VIP 901', token: 'HMAC_SHA256_TICKET_TOKEN_901_SECURE_AUTH_VALID_SAMPLE_KEY' },
-    { label: 'Boleto Válido VIP 902', token: 'HMAC_SHA256_TICKET_TOKEN_902_SECURE_AUTH_VALID_SAMPLE_KEY' },
-    { label: 'Boleto Ya Usado 880', token: 'HMAC_SHA256_TICKET_TOKEN_880_USED_GATE_CHECKED_SAMPLE' },
-  ];
-
-  const handleValidar = async (tokenAValidar?: string) => {
-    const token = (tokenAValidar || codigoQr).trim();
-    if (!token) return;
-
-    setCargando(true);
-    setResultado(null);
-
-    try {
-      if (token.includes('USED') || token.includes('880')) {
-        setResultado({
-          tipo: 'YA_USADO',
-          mensaje: 'ACCESO DENEGADO: El boleto ya fue utilizado previamente.',
-          detalle: { fechaUso: '2026-10-10 05:42:15', validadoPor: 'Molinete Puerta 2' },
-        });
-      } else {
-        const res = await api.validarBoleto(token);
-        setResultado({
-          tipo: 'EXITO',
-          mensaje: '¡ACCESO PERMITIDO! Boleto válido verificado con firma criptográfica HMAC-SHA256.',
-          detalle: {
-            evento: 'VIVA FEST 2026 — ASA Promotions',
-            sector: 'VIP Front Stage',
-            titular: 'Carlos Mendoza',
-            horaIngreso: new Date().toLocaleTimeString('es-GT'),
-          },
-        });
-      }
-    } catch (err: any) {
-      setResultado({
-        tipo: 'RECHAZADO',
-        mensaje: err.detail || 'Firma de boleto no válida o token inexistente.',
-      });
-    } finally {
-      setCargando(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
-      <div 
-        className="modal-content"
-        style={{ maxWidth: '580px' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div style={{
-          padding: '20px 24px',
-          borderBottom: '2px solid var(--border-strong)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          backgroundColor: 'var(--bg-canvas)'
-        }}>
-          <div>
-            <span className="badge badge-categoria" style={{ marginBottom: '6px' }}>
-              CONTROL DE ACCESO Y MOLINETE
-            </span>
-            <h2 style={{ fontSize: '1.35rem' }}>Terminal de Validación QR</h2>
-          </div>
-          <button onClick={onClose} className="btn btn-sm btn-outline" style={{ padding: '6px 10px' }}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: '24px' }}>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '8px' }}>
-              TOKEN HMAC-SHA256 DEL BOLETO:
-            </label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                className="input-brutal"
-                placeholder="Escanea o pega el token HMAC del boleto..."
-                value={codigoQr}
-                onChange={(e) => setCodigoQr(e.target.value)}
-              />
-              <button
-                onClick={() => handleValidar()}
-                disabled={!codigoQr.trim() || cargando}
-                className="btn btn-primary"
-                style={{ padding: '0 20px' }}
-              >
-                {cargando ? <Loader2 size={18} className="spin" /> : 'Validar'}
-              </button>
-            </div>
-          </div>
-
-          {/* Quick test sample tokens */}
-          <div style={{ marginBottom: '24px' }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-              TOKENS DE PRUEBA RÁPIDA:
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {sampleTokens.map((st, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setCodigoQr(st.token);
-                    handleValidar(st.token);
-                  }}
-                  className="btn btn-sm btn-outline"
-                  style={{ fontSize: '0.72rem', padding: '6px 10px', backgroundColor: '#FFF' }}
-                >
-                  <QrCode size={13} /> {st.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Result card */}
-          {resultado && (
-            <div style={{
-              padding: '20px',
-              border: '2px solid var(--border-strong)',
-              boxShadow: 'var(--shadow-crisp)',
-              backgroundColor: 
-                resultado.tipo === 'EXITO' ? 'var(--accent-emerald-soft)' :
-                resultado.tipo === 'YA_USADO' ? 'var(--accent-amber-soft)' : 'var(--accent-vermilion-soft)',
-              borderColor:
-                resultado.tipo === 'EXITO' ? 'var(--accent-emerald)' :
-                resultado.tipo === 'YA_USADO' ? 'var(--accent-amber)' : 'var(--accent-vermilion)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                {resultado.tipo === 'EXITO' && <CheckCircle2 size={24} color="var(--accent-emerald)" />}
-                {resultado.tipo === 'YA_USADO' && <AlertTriangle size={24} color="var(--accent-amber)" />}
-                {resultado.tipo === 'RECHAZADO' && <XCircle size={24} color="var(--accent-vermilion)" />}
-                
-                <h3 style={{ 
-                  fontSize: '1.2rem',
-                  color: resultado.tipo === 'EXITO' ? 'var(--accent-emerald)' :
-                         resultado.tipo === 'YA_USADO' ? 'var(--accent-amber)' : 'var(--accent-vermilion)'
-                }}>
-                  {resultado.tipo === 'EXITO' ? 'ACCESO AUTORIZADO' :
-                   resultado.tipo === 'YA_USADO' ? 'BOLETO YA REGISTRADO' : 'ACCESO DENEGADO'}
-                </h3>
-              </div>
-
-              <p style={{ fontSize: '0.9rem', marginBottom: '12px' }}>
-                {resultado.mensaje}
-              </p>
-
-              {resultado.detalle && (
-                <div style={{
-                  backgroundColor: '#FFF',
-                  border: '1px solid var(--border-medium)',
-                  padding: '12px',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.8rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px'
-                }}>
-                  {Object.entries(resultado.detalle).map(([k, v]) => (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ textTransform: 'capitalize', color: 'var(--text-secondary)' }}>{k}:</span>
-                      <strong>{String(v)}</strong>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          padding: '14px 24px',
-          borderTop: '2px solid var(--border-strong)',
-          display: 'flex',
-          justifyContent: 'flex-end',
-          backgroundColor: 'var(--bg-canvas)'
-        }}>
-          <button onClick={onClose} className="btn btn-outline">
-            Cerrar Terminal
-          </button>
-        </div>
-
-      </div>
-    </div>
-  );
-};
+export function ScannerModal({ onClose }: { onClose: () => void }) {
+  return <Modal isOpen onClose={onClose} title="Validar entrada"><TicketScanner /></Modal>;
+}

@@ -1,3 +1,4 @@
+import { useAuth } from '../../context/AuthContext';
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { CategoriaDetalleDto, PresentadorDetalleDto, EventoCatalogo, EventoPresentadorItemDto } from '../../types/api';
@@ -17,7 +18,9 @@ import {
 } from 'lucide-react';
 
 export const AdminCatalog: React.FC = () => {
-  const [subTab, setSubTab] = useState<'CATEGORIAS' | 'PRESENTADORES' | 'EVENTOS_PRESENTADORES'>('CATEGORIAS');
+  const { user } = useAuth();
+  const isDueno = user?.rol === 'DUENO_RECINTO';
+  const [subTab, setSubTab] = useState<'CATEGORIAS' | 'PRESENTADORES' | 'EVENTOS_PRESENTADORES'>(isDueno ? 'EVENTOS_PRESENTADORES' : 'CATEGORIAS');
 
   // --- CATEGORÍAS STATE ---
   const [categorias, setCategorias] = useState<CategoriaDetalleDto[]>([]);
@@ -37,7 +40,7 @@ export const AdminCatalog: React.FC = () => {
   const [presentadorModalOpen, setPresentadorModalOpen] = useState(false);
   const [editingPresentador, setEditingPresentador] = useState<PresentadorDetalleDto | null>(null);
   const [presentadorForm, setPresentadorForm] = useState({
-    nombreArtistico: '',
+    nombreArtistico: '', tipo: 'ARTISTA',
     biografia: ''
   });
   const [selectedPresentadorForImage, setSelectedPresentadorForImage] = useState<PresentadorDetalleDto | null>(null);
@@ -89,7 +92,7 @@ export const AdminCatalog: React.FC = () => {
 
   const fetchEventos = async () => {
     try {
-      const res = await api.getEventos({ pageSize: 50 });
+      const res = await api.getEventosAdmin().then(items => ({items}));
       setEventos(res.items || []);
       if (res.items?.length > 0 && !selectedEventoId) {
         setSelectedEventoId(res.items[0].id);
@@ -127,7 +130,8 @@ export const AdminCatalog: React.FC = () => {
     setCategoriaModalOpen(true);
   };
 
-  const handleOpenCategoriaEdit = (cat: CategoriaDetalleDto) => {
+  const handleOpenCategoriaEdit = async (selected: CategoriaDetalleDto) => {
+    let cat: CategoriaDetalleDto; try { cat = await api.getCategoria(selected.id); } catch (err: any) { showFeedback(err.detail, "error"); return; }
     setEditingCategoria(cat);
     setCategoriaForm({
       nombre: cat.nombre,
@@ -169,16 +173,17 @@ export const AdminCatalog: React.FC = () => {
   const handleOpenPresentadorCreate = () => {
     setEditingPresentador(null);
     setPresentadorForm({
-      nombreArtistico: '',
+      nombreArtistico: '', tipo: 'ARTISTA',
       biografia: ''
     });
     setPresentadorModalOpen(true);
   };
 
-  const handleOpenPresentadorEdit = (p: PresentadorDetalleDto) => {
+  const handleOpenPresentadorEdit = async (selected: PresentadorDetalleDto) => {
+    let p: PresentadorDetalleDto; try { p = await api.getPresentador(selected.id); } catch (err: any) { showFeedback(err.detail, "error"); return; }
     setEditingPresentador(p);
     setPresentadorForm({
-      nombreArtistico: p.nombreArtistico,
+      nombreArtistico: p.nombreArtistico, tipo: (p as any).tipo,
       biografia: p.biografia || ''
     });
     setPresentadorModalOpen(true);
@@ -288,12 +293,14 @@ export const AdminCatalog: React.FC = () => {
       {/* Subnavegador de Catálogo */}
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <button
+          disabled={isDueno}
           onClick={() => setSubTab('CATEGORIAS')}
           className={`btn btn-sm ${subTab === 'CATEGORIAS' ? 'btn-inverse' : 'btn-outline'}`}
         >
           <Tag size={15} /> Categorías de Eventos ({categorias.length})
         </button>
         <button
+          disabled={isDueno}
           onClick={() => setSubTab('PRESENTADORES')}
           className={`btn btn-sm ${subTab === 'PRESENTADORES' ? 'btn-inverse' : 'btn-outline'}`}
         >
@@ -447,7 +454,7 @@ export const AdminCatalog: React.FC = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="badge badge-categoria" style={{ fontSize: '0.65rem' }}>TALENTO</span>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-amber)' }}>
-                          ★ {(p.promedioCalificacion || 5.0).toFixed(1)}
+                          ★ {p.promedioCalificacion?.toFixed(1) || 'Sin calificaciones'}
                         </span>
                       </div>
                       <h4 style={{ fontSize: '1.15rem', marginTop: '4px' }}>{p.nombreArtistico}</h4>
@@ -580,7 +587,7 @@ export const AdminCatalog: React.FC = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <span className="badge badge-categoria" style={{ fontFamily: 'var(--font-mono)' }}>
-                      Orden #{item.orden}
+                      {item.tipo || "Presentador"}
                     </span>
                     <div>
                       <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.1rem' }}>
@@ -592,6 +599,7 @@ export const AdminCatalog: React.FC = () => {
                     </div>
                   </div>
 
+                  <button className="btn btn-sm btn-outline" onClick={async () => { const rol = prompt('Rol del presentador en el evento:', item.rol || ''); if (rol === null || !selectedEventoId) return; try { await api.actualizarPresentadorEvento(selectedEventoId, item.presentadorId, { rol, orden: 0 }); await fetchEventoPresentadores(selectedEventoId); } catch (e: any) { showFeedback(e.detail, 'error'); } }}>Editar rol</button>
                   <button
                     onClick={() => handleDesasociar(item.presentadorId, item.nombreArtistico)}
                     className="btn btn-sm btn-outline"
@@ -673,7 +681,7 @@ export const AdminCatalog: React.FC = () => {
         maxWidth="560px"
       >
         <form onSubmit={handleSavePresentador} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
+          <label>Tipo<select value={presentadorForm.tipo} onChange={e => setPresentadorForm({ ...presentadorForm, tipo: e.target.value })}>{['ARTISTA','EQUIPO','PRESENTADOR','ORGANIZACION'].map(t => <option key={t}>{t}</option>)}</select></label><div>
             <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, marginBottom: '6px' }}>
               Nombre Artístico *
             </label>
@@ -783,18 +791,7 @@ export const AdminCatalog: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', fontWeight: 700, marginBottom: '6px' }}>
-                Orden de Aparición
-              </label>
-              <input
-                type="number"
-                min={1}
-                value={asociarForm.orden}
-                onChange={(e) => setAsociarForm({ ...asociarForm, orden: Number(e.target.value) })}
-                className="input-base"
-              />
-            </div>
+
           </div>
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>

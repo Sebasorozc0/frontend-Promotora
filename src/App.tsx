@@ -1,20 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { PurchaseHistory } from './components/PurchaseHistory';
+import { TicketWallet } from './components/TicketWallet';
+import { MyReviews, PublicFeedback } from './components/MyReviews';
+import React, { useState, useEffect, useRef } from 'react';
+import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { HeroEditorial } from './components/HeroEditorial';
 import { EventCard } from './components/EventCard';
 import { VenueMapModal } from './components/VenueMapModal';
 import { CheckoutModal } from './components/CheckoutModal';
-import { TicketCard } from './components/TicketCard';
 import { JoseAssistantDrawer } from './components/JoseAssistantDrawer';
-import { ScannerModal } from './components/ScannerModal';
+import { ScannerModal, TicketScanner } from './components/ScannerModal';
 import { AuthModal } from './components/AuthModal';
 import { PasswordChangeModal } from './components/PasswordChangeModal';
-import { AdminPanel } from './components/AdminPanel';
+const AdminPanel = React.lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
 import { UserProfileModal } from './components/UserProfileModal';
-import { api, MOCK_EVENTOS, MOCK_EVENTO_DETALLE, MOCK_BOLETOS } from './api/client';
-import { EventoCatalogo, DetalleEventoPublico, BoletoResponse, CompraResponse } from './types/api';
+import { api } from './api/client';
+import { EventoCatalogo, DetalleEventoPublico, BoletoResponse } from './types/api';
 import { 
   Ticket, 
   ShoppingBag, 
@@ -51,11 +53,7 @@ function EventoDetalleView({
     api.getEvento(Number(id)).then((data) => {
       setDetalle(data);
     }).catch(() => {
-      const mock = MOCK_EVENTOS.find(e => e.id === Number(id)) || MOCK_EVENTOS[0];
-      setDetalle({
-        ...mock,
-        tiposEntrada: MOCK_EVENTO_DETALLE.tiposEntrada,
-      });
+      setDetalle(null);
     }).finally(() => {
       setLoading(false);
     });
@@ -122,7 +120,7 @@ function EventoDetalleView({
 
           <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
             <span className="badge badge-categoria">{detalle.categoriaNombre}</span>
-            <span className="badge badge-valido">Firma Criptográfica HMAC</span>
+            <span className="badge badge-valido">Entrada digital verificada</span>
           </div>
 
           <h1 style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', marginBottom: '16px', lineHeight: 1.1 }}>
@@ -167,6 +165,7 @@ function EventoDetalleView({
             </p>
           </div>
 
+          <PublicFeedback eventoId={detalle.id} presentadores={detalle.presentadores} />
           {/* Presenters */}
           {detalle.presentadores && detalle.presentadores.length > 0 && (
             <div style={{ marginBottom: '36px' }}>
@@ -204,7 +203,7 @@ function EventoDetalleView({
                         {p.nombreArtistico}
                       </div>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--accent-amber)', fontWeight: 600 }}>
-                        ★ {p.promedioCalificacion?.toFixed(1) || '5.0'} / 5.0
+                        ★ {p.promedioCalificacion?.toFixed(1) || 'Sin reseñas'} / 5.0
                       </div>
                     </div>
                   </div>
@@ -292,7 +291,7 @@ function EventoDetalleView({
             color: 'var(--text-secondary)'
           }}>
             <ShieldCheck size={16} color="var(--accent-emerald)" />
-            <span>Reserva atómica en BD. Cero riesgo de sobreventa.</span>
+            <span>Tu reserva confirma la disponibilidad de las entradas.</span>
           </div>
 
         </div>
@@ -328,6 +327,7 @@ function CatalogoView({
   return (
     <div>
       <HeroEditorial
+        categorias={[{ id: null, nombre: "TODOS LOS EVENTOS" }, ...Array.from(new globalThis.Map(eventos.map(e => [e.categoriaId, { id: e.categoriaId, nombre: e.categoriaNombre }])).values())]}
         busqueda={busqueda}
         setBusqueda={setBusqueda}
         categoriaActiva={categoriaActiva}
@@ -390,236 +390,29 @@ function CatalogoView({
   );
 }
 
-// --- VISTA: MIS BOLETOS ---
-function BoletosView({
-  boletos,
-  onCalificar
-}: {
-  boletos: BoletoResponse[];
-  onCalificar: (boleto: BoletoResponse) => void;
-}) {
-  const [filtroBoleto, setFiltroBoleto] = useState<'TODOS' | 'VALIDO' | 'USADO'>('TODOS');
-
-  const boletosFiltrados = boletos.filter((b) => {
-    if (filtroBoleto === 'TODOS') return true;
-    return b.estado === filtroBoleto;
-  });
-
-  return (
-    <div className="container" style={{ padding: '48px 24px 80px 24px' }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        justifyContent: 'space-between',
-        marginBottom: '32px',
-        borderBottom: '2px solid var(--border-strong)',
-        paddingBottom: '16px'
-      }}>
-        <div>
-          <span className="badge badge-categoria" style={{ marginBottom: '6px' }}>
-            BILLETERA DIGITAL OFICIAL
-          </span>
-          <h2 style={{ fontSize: '2.2rem', textTransform: 'uppercase' }}>
-            Mis Boletos Digitales
-          </h2>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Presenta el código QR en la entrada del recinto. La validación es atómica y de un solo uso.
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => setFiltroBoleto('TODOS')}
-            className={`btn btn-sm ${filtroBoleto === 'TODOS' ? 'btn-inverse' : 'btn-outline'}`}
-          >
-            Todos ({boletos.length})
-          </button>
-          <button
-            onClick={() => setFiltroBoleto('VALIDO')}
-            className={`btn btn-sm ${filtroBoleto === 'VALIDO' ? 'btn-inverse' : 'btn-outline'}`}
-          >
-            Válidos ({boletos.filter((b) => b.estado === 'VALIDO').length})
-          </button>
-          <button
-            onClick={() => setFiltroBoleto('USADO')}
-            className={`btn btn-sm ${filtroBoleto === 'USADO' ? 'btn-inverse' : 'btn-outline'}`}
-          >
-            Usados ({boletos.filter((b) => b.estado === 'USADO').length})
-          </button>
-        </div>
-      </div>
-
-      {boletosFiltrados.length === 0 ? (
-        <div style={{
-          textAlign: 'center',
-          padding: '80px 20px',
-          backgroundColor: 'var(--bg-surface)',
-          border: '2px dashed var(--border-medium)'
-        }}>
-          <Ticket size={48} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
-          <h3 style={{ fontSize: '1.3rem', marginBottom: '8px' }}>No hay boletos en esta sección</h3>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            Adquiere tus entradas en la cartelera principal.
-          </p>
-        </div>
-      ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-          gap: '24px'
-        }}>
-          {boletosFiltrados.map((b) => (
-            <div key={b.id}>
-              <TicketCard boleto={b} />
-              {b.estado === 'USADO' && (
-                <button
-                  onClick={() => onCalificar(b)}
-                  className="btn btn-sm btn-outline"
-                  style={{ width: '100%', marginTop: '8px', gap: '6px' }}
-                >
-                  <Star size={14} color="var(--accent-amber)" /> Calificar este Evento
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- VISTA: MIS COMPRAS ---
-function ComprasView({
-  compras,
-  onCancelarCompra,
-  onVerBoletos
-}: {
-  compras: CompraResponse[];
-  onCancelarCompra: (publicId: string) => void;
-  onVerBoletos: () => void;
-}) {
-  return (
-    <div className="container" style={{ padding: '48px 24px 80px 24px' }}>
-      <div style={{
-        marginBottom: '32px',
-        borderBottom: '2px solid var(--border-strong)',
-        paddingBottom: '16px'
-      }}>
-        <span className="badge badge-categoria" style={{ marginBottom: '6px' }}>
-          REGISTRO TRANSACCIONAL
-        </span>
-        <h2 style={{ fontSize: '2.2rem', textTransform: 'uppercase' }}>
-          Historial de Compras y Pedidos
-        </h2>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          Tus órdenes de compra procesadas en alta disponibilidad con RabbitMQ y PostgreSQL.
-        </div>
-      </div>
-
-      {compras.length === 0 ? (
-        <div style={{
-          textAlign: 'center',
-          padding: '80px 20px',
-          backgroundColor: 'var(--bg-surface)',
-          border: '2px dashed var(--border-medium)'
-        }}>
-          <ShoppingBag size={48} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
-          <h3 style={{ fontSize: '1.3rem', marginBottom: '8px' }}>No tienes compras registradas</h3>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            Tus compras completadas aparecerán aquí con sus recibos e información de pago.
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {compras.map((compra) => (
-            <div
-              key={compra.id || compra.publicId}
-              style={{
-                backgroundColor: '#FFF',
-                border: '2px solid var(--border-strong)',
-                boxShadow: 'var(--shadow-crisp-sm)',
-                padding: '24px',
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '20px'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                  <span className={`badge ${
-                    compra.estado === 'COMPLETADA' ? 'badge-completada' :
-                    compra.estado === 'PENDIENTE' ? 'badge-pendiente' : 'badge-cancelada'
-                  }`}>
-                    {compra.estado}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Ref: <strong>{compra.publicId}</strong>
-                  </span>
-                </div>
-
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '6px' }}>
-                  {compra.eventoTitulo || 'VIVA FEST 2026'}
-                </h3>
-
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                  Fecha: {new Date(compra.creadoEn).toLocaleString('es-GT')}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '28px' }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    Subtotal: Q{compra.subtotal?.toFixed(2)} + IVA & Comisión
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent-vermilion)' }}>
-                    Q{compra.total.toFixed(2)}
-                  </div>
-                </div>
-
-                {compra.estado === 'PENDIENTE' && (
-                  <button
-                    onClick={() => onCancelarCompra(compra.publicId)}
-                    className="btn btn-sm btn-outline"
-                    style={{ color: 'var(--accent-vermilion)' }}
-                  >
-                    <XCircle size={16} /> Cancelar Pedido
-                  </button>
-                )}
-
-                {compra.estado === 'COMPLETADA' && (
-                  <button
-                    onClick={onVerBoletos}
-                    className="btn btn-sm btn-inverse"
-                  >
-                    <Ticket size={16} /> Ver Boletos
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // --- COMPONENTE PRINCIPAL CON RUTAS ---
 function AppContent() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const previousUser = useRef(user?.id);
+  useEffect(() => {
+    if (user?.rol === 'VALIDADOR_BOLETOS') {
+      if (location.pathname !== '/validar') navigate('/validar', { replace: true });
+    } else if (user?.id && previousUser.current !== user.id && user.rol !== 'CLIENTE') {
+      navigate(user.rol === 'DUENO_RECINTO' ? '/dueno' : '/gestion');
+    }
+    previousUser.current = user?.id;
+  }, [user?.id, user?.rol, location.pathname, navigate]);
 
   // Catálogo y Búsqueda
-  const [eventos, setEventos] = useState<EventoCatalogo[]>(MOCK_EVENTOS);
+  const [eventos, setEventos] = useState<EventoCatalogo[]>([]);
 
   // Modales
   const [eventoParaMapa, setEventoParaMapa] = useState<EventoCatalogo | null>(null);
+  const [localidadCompra, setLocalidadCompra] = useState<number | undefined>();
+  const [errorGlobal, setErrorGlobal] = useState<string | null>(null);
   const [eventoParaCompra, setEventoParaCompra] = useState<DetalleEventoPublico | null>(null);
-
-  // Boletos y Compras
-  const [misBoletos, setMisBoletos] = useState<BoletoResponse[]>(MOCK_BOLETOS);
-  const [misCompras, setMisCompras] = useState<CompraResponse[]>([]);
 
   // Modales Globales
   const [isJoseOpen, setIsJoseOpen] = useState(false);
@@ -635,70 +428,9 @@ function AppContent() {
 
   // Cargar catálogo público al iniciar
   useEffect(() => {
-    api.getEventos().then((res) => {
-      if (res && res.items && res.items.length > 0) {
-        setEventos(res.items);
-      }
-    }).catch(() => {
-      // Usar mocks
-    });
-  }, []);
-
-  // Cargar boletos y compras SOLO cuando el usuario es CLIENTE (admin y dueños no tienen boletos de consumidor)
-  useEffect(() => {
-    if (user && user.rol === 'CLIENTE') {
-      api.getMisBoletos().then((boletos) => {
-        if (boletos && boletos.length > 0) {
-          setMisBoletos(boletos);
-        }
-      }).catch(() => {});
-
-      api.getMisCompras().then((res) => {
-        if (res && res.items) {
-          setMisCompras(res.items);
-        }
-      }).catch(() => {});
-    } else {
-      setMisBoletos([]);
-      setMisCompras([]);
-    }
-  }, [user]);
-
-  const handleCompraExitosa = (compra: CompraResponse) => {
-    setMisCompras((prev) => [compra, ...prev]);
-    if (eventoParaCompra) {
-      const nuevosBoletos: BoletoResponse[] = compra.items.flatMap((item, idx) =>
-        Array.from({ length: item.cantidad }).map((_, i) => ({
-          id: Math.floor(Math.random() * 9000) + 1000,
-          compraId: compra.id,
-          publicIdCompra: compra.publicId,
-          eventoId: eventoParaCompra.id,
-          eventoTitulo: eventoParaCompra.titulo,
-          recintoNombre: eventoParaCompra.recintoNombre,
-          fechaInicio: eventoParaCompra.fechaInicio,
-          tipoEntradaId: item.tipoEntradaId,
-          tipoEntradaNombre: item.tipoEntradaNombre,
-          codigoQr: `HMAC_SHA256_TICKET_${compra.publicId}_${item.id}_${i}_VERIFIED_SECURE`,
-          estado: 'VALIDO',
-          precioFinal: item.precioUnitario,
-          asistenteNombre: user?.nombre || 'Titular',
-        }))
-      );
-      setMisBoletos((prev) => [...nuevosBoletos, ...prev]);
-    }
-  };
-
-  const handleCancelarCompra = async (publicId: string) => {
-    if (!confirm('¿Deseas cancelar esta compra pendiente y liberar el cupo reservado?')) return;
-    try {
-      await api.cancelarCompra(publicId);
-      setMisCompras((prev) =>
-        prev.map((c) => (c.publicId === publicId ? { ...c, estado: 'CANCELADA' } : c))
-      );
-    } catch {
-      alert('No se pudo cancelar la compra.');
-    }
-  };
+    if (user?.rol === 'VALIDADOR_BOLETOS') return;
+    api.all<any>('/catalogo/eventos').then(items => setEventos(items.map(item => api.normalizarEventoCatalogo(item)))).catch(err => setErrorGlobal(err.detail));
+  }, [user?.rol]);
 
   const handleEnviarResena = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -717,6 +449,13 @@ function AppContent() {
     }
   };
 
+  if (user?.rol === 'VALIDADOR_BOLETOS') {
+    return <main className="container wallet-page">
+      <div className="page-heading"><h1>Control de entradas</h1><button className="btn btn-outline" onClick={() => void logout()}>Cerrar sesión</button></div>
+      {user.debeCambiarPassword ? <PasswordChangeModal /> : <div className="wizard-card"><TicketScanner key={user.id} allowManual={false} /></div>}
+    </main>;
+  }
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Navbar Superior con Navegación por URL */}
@@ -729,8 +468,9 @@ function AppContent() {
 
       {/* Main Content Area con Router */}
       <main style={{ flex: 1 }}>
+        {errorGlobal && <div className="container notice" role="alert">{errorGlobal} <button className="btn btn-sm" onClick={() => window.location.reload()}>Reintentar</button></div>}
         <Routes>
-          <Route path="/" element={<Navigate to="/catalogo" replace />} />
+          <Route path="/" element={<Navigate to={user?.rol === "DUENO_RECINTO" ? "/dueno" : user?.rol === "ADMINISTRADOR" ? "/gestion" : "/catalogo"} replace />} />
           <Route
             path="/catalogo"
             element={
@@ -745,7 +485,7 @@ function AppContent() {
             path="/eventos/:id"
             element={
               <EventoDetalleView
-                onComprar={(ev) => setEventoParaCompra(ev)}
+                onComprar={(ev) => { if (!user) { setIsAuthOpen(true); return; } if (user.rol !== "CLIENTE") { setErrorGlobal("La compra está disponible para cuentas de cliente."); return; } setLocalidadCompra(undefined); setEventoParaCompra(ev); }}
                 onVerMapa={(ev) => setEventoParaMapa(ev)}
               />
             }
@@ -753,30 +493,25 @@ function AppContent() {
           <Route
             path="/boletos"
             element={
-              <BoletosView
-                boletos={misBoletos}
-                onCalificar={(boleto) => setBoletoParaResena(boleto)}
-              />
+              <TicketWallet onCalificar={boleto => setBoletoParaResena(boleto)} />
             }
           />
           <Route
             path="/compras"
             element={
-              <ComprasView
-                compras={misCompras}
-                onCancelarCompra={handleCancelarCompra}
-                onVerBoletos={() => navigate('/boletos')}
-              />
+              user?.rol === 'CLIENTE' ? <PurchaseHistory eventos={eventos} /> : <div className="container empty-state"><h2>Mis compras</h2><p>Inicia sesión como cliente para consultar tus compras.</p></div>
             }
           />
+          <Route path="/resenas" element={<MyReviews />} />
+          {['/gestion','/gestion/:tab','/dueno','/dueno/:tab'].map(path => <Route key={path} path={path} element={<React.Suspense fallback={<div className="container notice">Cargando tu espacio…</div>}><AdminPanel /></React.Suspense>} />)}
           <Route path="/admin" element={<Navigate to={user?.rol === 'DUENO_RECINTO' ? '/admin/recintos' : '/admin/catalogo'} replace />} />
-          <Route path="/admin/:tab" element={<AdminPanel />} />
+          <Route path="/admin/:tab" element={<React.Suspense fallback={<div className="container notice">Cargando panel…</div>}><AdminPanel /></React.Suspense>} />
           <Route path="*" element={<Navigate to="/catalogo" replace />} />
         </Routes>
       </main>
 
       {/* Footer Editorial */}
-      <footer style={{
+      {!/^\/(gestion|dueno|admin)(\/|$)/.test(location.pathname) && <footer style={{
         backgroundColor: 'var(--bg-inverse)',
         color: 'var(--text-inverse)',
         borderTop: '2px solid var(--border-strong)',
@@ -798,10 +533,10 @@ function AppContent() {
                 SOPORTE & SEGURIDAD
               </div>
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', color: '#9CA3AF' }}>
-                <li>· Firma criptográfica HMAC en cada boleto</li>
-                <li>· Prevención atómica de sobreventa en BD</li>
-                <li>· Pasarela de pago y ledger inmutable</li>
-                <li>· Asistente público José con RAG</li>
+                <li>· Un código personal por cada entrada</li>
+                <li>· Disponibilidad confirmada al reservar</li>
+                <li>· Historial de tus compras y entradas</li>
+                <li>· José te ayuda con información del evento</li>
               </ul>
             </div>
 
@@ -830,21 +565,23 @@ function AppContent() {
             color: '#6B7280'
           }}>
             <div>© 2026 ASA Promotions & Promotora de Eventos. Todos los derechos reservados.</div>
-            <div>Clean Architecture · .NET 10 + React Vite · RabbitMQ · pgvector</div>
+            <div>Eventos · Experiencias · Entradas digitales</div>
           </div>
         </div>
-      </footer>
+      </footer>}
 
       {/* MODALES GLOBALES */}
       {eventoParaMapa && (
         <VenueMapModal
           evento={eventoParaMapa}
           onClose={() => setEventoParaMapa(null)}
-          onSelectLocalidad={(localidad) => {
-            setEventoParaCompra({
-              ...eventoParaMapa,
-              tiposEntrada: MOCK_EVENTO_DETALLE.tiposEntrada,
-            });
+          onSelectLocalidad={async (localidad) => {
+            if (!user) { setIsAuthOpen(true); return; }
+            if (user.rol !== 'CLIENTE') { setErrorGlobal('La compra requiere una cuenta CLIENTE.'); return; }
+            try {
+              const detalle = await api.getEvento(eventoParaMapa.id);
+              setLocalidadCompra(localidad.id); setEventoParaCompra(detalle); setEventoParaMapa(null);
+            } catch (err: any) { setErrorGlobal(err.detail); }
           }}
         />
       )}
@@ -852,10 +589,10 @@ function AppContent() {
       {eventoParaCompra && (
         <CheckoutModal
           evento={eventoParaCompra}
+          localidadId={localidadCompra}
           onClose={() => setEventoParaCompra(null)}
           onSuccess={(compra) => {
-            handleCompraExitosa(compra);
-            navigate('/boletos');
+            navigate('/boletos?compra=' + compra.publicId);
           }}
         />
       )}
@@ -865,7 +602,7 @@ function AppContent() {
         onClose={() => setIsJoseOpen(false)}
       />
 
-      {isScannerOpen && (
+      {isScannerOpen && (user?.rol === 'ADMINISTRADOR' || user?.rol === 'DUENO_RECINTO') && (
         <ScannerModal onClose={() => setIsScannerOpen(false)} />
       )}
 
@@ -931,8 +668,8 @@ function AppContent() {
                   Comentario sobre tu experiencia:
                 </label>
                 <textarea
+                  maxLength={510}
                   rows={4}
-                  required
                   className="input-brutal"
                   placeholder="Cuéntanos cómo estuvo la acústica, el ingreso y la organización..."
                   value={comentarioResena}

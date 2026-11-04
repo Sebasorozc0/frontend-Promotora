@@ -281,6 +281,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
           <input
             type="text"
             className="input-brutal"
+            maxLength={1000}
             placeholder="Pregunta a José sobre eventos o reglamentos..."
             value={input}
             onChange={(e) => setInput(e.target.value)}

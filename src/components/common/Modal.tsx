@@ -20,6 +20,26 @@ export const Modal: React.FC<ModalProps> = ({
   maxWidth = '560px',
   children,
 }) => {
+  const dialog = React.useRef<HTMLDivElement>(null);
+  const close = React.useRef(onClose); close.current = onClose;
+  const titleId = React.useId();
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    const focusable = () => Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]') || []);
+    (focusable()[0] || dialog.current)?.focus();
+    const keydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); close.current(); }
+      if (e.key !== 'Tab') return;
+      const nodes = focusable(); const first = nodes[0], last = nodes.at(-1);
+      if (!first) { e.preventDefault(); dialog.current?.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown',keydown);
+    return () => { document.removeEventListener('keydown',keydown); document.body.style.overflow = overflow; previous?.focus(); };
+  }, [isOpen]);
   if (!isOpen) return null;
 
   return (
@@ -42,6 +62,11 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <div
         className="modal-content"
+        ref={dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           backgroundColor: 'var(--bg-surface)',
@@ -74,7 +99,7 @@ export const Modal: React.FC<ModalProps> = ({
                 {badge}
               </span>
             )}
-            <h2 style={{ fontSize: '1.35rem', lineHeight: 1.2 }}>{title}</h2>
+            <h2 id={titleId} style={{ fontSize: '1.35rem', lineHeight: 1.2 }}>{title}</h2>
             {subtitle && (
               <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
                 {subtitle}

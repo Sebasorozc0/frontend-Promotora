@@ -36,6 +36,8 @@ export const AdminUsers: React.FC = () => {
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
 
   // Modales
+  const [altaValidador, setAltaValidador] = useState(false);
+  const [errorAlta, setErrorAlta] = useState('');
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [duenoModalOpen, setDuenoModalOpen] = useState(false);
   const [detalleModalOpen, setDetalleModalOpen] = useState(false);
@@ -81,56 +83,9 @@ export const AdminUsers: React.FC = () => {
     try {
       const res = await api.getUsuarios(1, 100);
       setUsuarios(res.items || []);
-    } catch {
-      // Mock para vista de desarrollo si el token no tiene rol admin en ese instante
-      setUsuarios([
-        {
-          usuario: {
-            id: 1,
-            email: 'admin@promotora.gt',
-            nombre: 'Administrador',
-            apellido: 'Sistema',
-            rol: 'ADMINISTRADOR',
-            estado: 'ACTIVO',
-            debeCambiarPassword: false
-          },
-          perfil: {
-            telefono: '+502 2333-4444',
-            empresa: 'ASA Promotora Central'
-          }
-        },
-        {
-          usuario: {
-            id: 2,
-            email: 'cayala.dueno@recintos.gt',
-            nombre: 'Paseo',
-            apellido: 'Cayalá',
-            rol: 'DUENO_RECINTO',
-            estado: 'ACTIVO',
-            debeCambiarPassword: false
-          },
-          perfil: {
-            empresa: 'Inversiones Cayalá S.A.',
-            nit: '8877665-4',
-            telefono: '+502 2493-0000'
-          }
-        },
-        {
-          usuario: {
-            id: 3,
-            email: 'cliente.demo@gmail.com',
-            nombre: 'Carlos',
-            apellido: 'Mendoza',
-            rol: 'CLIENTE',
-            estado: 'ACTIVO',
-            debeCambiarPassword: false
-          },
-          perfil: {
-            telefono: '+502 5555-1234',
-            nit: 'CF'
-          }
-        }
-      ]);
+    } catch (error: any) {
+      setUsuarios([]);
+      showFeedback(error?.detail || 'No se pudo cargar la lista de usuarios.', 'error');
     } finally {
       setLoading(false);
     }
@@ -145,13 +100,14 @@ export const AdminUsers: React.FC = () => {
     e.preventDefault();
     setGuardando(true);
     try {
-      await api.altaAdministrador(adminForm);
-      showFeedback(`Administrador "${adminForm.nombre} ${adminForm.apellido}" registrado con éxito.`);
+      if (altaValidador) await api.altaValidador(adminForm);
+      else await api.altaAdministrador(adminForm);
+      showFeedback(`${altaValidador ? 'Validador' : 'Administrador'} "${adminForm.nombre} ${adminForm.apellido}" registrado con éxito.`);
       setAdminModalOpen(false);
       setAdminForm({ email: '', password: '', nombre: '', apellido: '' });
       fetchUsuarios();
     } catch (err: any) {
-      showFeedback(err?.detail || 'Error al crear administrador.', 'error');
+      setErrorAlta(err?.detail || 'No se pudo crear la cuenta.');
     } finally {
       setGuardando(false);
     }
@@ -175,7 +131,9 @@ export const AdminUsers: React.FC = () => {
   };
 
   // --- VER / EDITAR PERFIL ---
-  const handleOpenDetalle = (u: UsuarioDetalleDto) => {
+  const handleOpenDetalle = async (selected: UsuarioDetalleDto) => {
+    let u: UsuarioDetalleDto;
+    try { u = await api.getPerfil(selected.usuario.id); } catch (err: any) { showFeedback(err.detail, "error"); return; }
     setSelectedUsuario(u);
     setEditPerfilForm({
       email: u.usuario.email,
@@ -299,6 +257,7 @@ export const AdminUsers: React.FC = () => {
           >
             <option value="TODOS">Todos los Roles</option>
             <option value="ADMINISTRADOR">ADMINISTRADOR</option>
+            <option value="VALIDADOR_BOLETOS">VALIDADOR DE BOLETOS</option>
             <option value="DUENO_RECINTO">DUEÑO DE RECINTO</option>
             <option value="CLIENTE">CLIENTE</option>
           </select>
@@ -319,12 +278,17 @@ export const AdminUsers: React.FC = () => {
           <button
             onClick={() => {
               setAdminForm({ email: '', password: '', nombre: '', apellido: '' });
+              setAltaValidador(false); setErrorAlta('');
               setAdminModalOpen(true);
             }}
             className="btn btn-sm btn-outline"
           >
             <ShieldCheck size={14} /> Alta Administrador
           </button>
+          <button className="btn btn-sm btn-outline" onClick={() => {
+            setAdminForm({ email: '', password: '', nombre: '', apellido: '' });
+            setAltaValidador(true); setErrorAlta(''); setAdminModalOpen(true);
+          }}>Alta validador de boletos</button>
           <button
             onClick={() => {
               setDuenoForm({ email: '', password: '', nombre: '', apellido: '', empresa: '', nit: '' });
@@ -430,12 +394,13 @@ export const AdminUsers: React.FC = () => {
       <Modal
         isOpen={adminModalOpen}
         onClose={() => setAdminModalOpen(false)}
-        title="Alta de Nuevo Administrador"
+        title={altaValidador ? "Alta de validador de boletos" : "Alta de administrador"}
         maxWidth="500px"
       >
         <form onSubmit={handleAltaAdmin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {errorAlta && <p className="notice" role="alert">{errorAlta}</p>}
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Se creará un usuario con rol <strong>ADMINISTRADOR</strong> con acceso total a moderación, eventos, reportes financieros y gestión de IA.
+            {altaValidador ? 'Esta cuenta abre únicamente el control de entradas. La persona deberá cambiar su contraseña al iniciar sesión por primera vez.' : 'Esta cuenta tendrá permisos administrativos.'}
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -487,7 +452,7 @@ export const AdminUsers: React.FC = () => {
             <input
               type="password"
               required
-              minLength={8}
+              minLength={12}
               value={adminForm.password || ''}
               onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
               className="input-base"
@@ -596,7 +561,7 @@ export const AdminUsers: React.FC = () => {
             <input
               type="password"
               required
-              minLength={8}
+              minLength={12}
               value={duenoForm.password || ''}
               onChange={(e) => setDuenoForm({ ...duenoForm, password: e.target.value })}
               className="input-base"

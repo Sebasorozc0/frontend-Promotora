@@ -14,6 +14,7 @@ export const VenueMapModal: React.FC<VenueMapModalProps> = ({
   onClose,
   onSelectLocalidad,
 }) => {
+  const [error, setError] = useState('');
   const [mapa, setMapa] = useState<MapaRecinto | null>(null);
   const [selectedZone, setSelectedZone] = useState<LocalidadMapa | null>(null);
   const [hoveredZone, setHoveredZone] = useState<LocalidadMapa | null>(null);
@@ -24,7 +25,7 @@ export const VenueMapModal: React.FC<VenueMapModalProps> = ({
       if (data.localidades && data.localidades.length > 0) {
         setSelectedZone(data.localidades[0]);
       }
-    });
+    }).catch(e => setError(e.detail));
   }, [evento]);
 
   const pointsToSvgString = (points: [number, number][]) => {
@@ -73,6 +74,7 @@ export const VenueMapModal: React.FC<VenueMapModalProps> = ({
 
         {/* Content Body */}
         <div style={{ padding: '24px' }}>
+          {error && <p className="notice" role="alert">{error}</p>}
           {/* Interactive SVG Stage Map with blueprint image and dynamic polygons */}
           <div style={{
             border: '2px solid var(--border-strong)',
