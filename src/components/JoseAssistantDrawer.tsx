@@ -137,7 +137,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
             </div>
           </div>
 
-          <button onClick={onClose} className="btn btn-sm btn-outline" style={{ padding: '6px 8px' }}>
+          <button onClick={onClose} aria-label="Cerrar asistente" className="btn btn-sm btn-outline" style={{ padding: '6px 8px' }}>
             <X size={18} />
           </button>
         </div>
@@ -280,6 +280,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
         }}>
           <input
             type="text"
+            aria-label="Pregunta para José"
             className="input-brutal"
             maxLength={1000}
             placeholder="Pregunta a José sobre eventos o reglamentos..."
@@ -290,6 +291,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
           />
           <button
             onClick={() => handleEnviar()}
+            aria-label="Enviar pregunta"
             disabled={!input.trim() || cargando}
             className="btn btn-primary"
             style={{ padding: '0 18px' }}
