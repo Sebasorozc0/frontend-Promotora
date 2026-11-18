@@ -62,34 +62,22 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
       texto: consulta,
     };
 
-    setMensajes((prev) => [...prev, nuevoMensajeUsuario]);
+    const idJose = 'jose-' + Date.now();
+    setMensajes((prev) => [...prev, nuevoMensajeUsuario, { id: idJose, remitente: 'jose', texto: '' }]);
     setInput('');
     setCargando(true);
 
     try {
-      const res = await api.consultarIa(consulta, sessionId);
-      const idJose = 'jose-' + Date.now();
-      const nuevoMensajeJose: MensajeChat = {
-        id: idJose,
-        remitente: 'jose',
-        texto: res.respuesta,
-        fuentes: res.fuentes,
-        herramientasUtilizadas: res.herramientasUtilizadas,
-        modelo: res.modelo,
-        tokensEntrada: res.tokensEntrada,
-        tokensSalida: res.tokensSalida,
-        tiempoMs: res.tiempoRespuestaMs,
-      };
-      setMensajes((prev) => [...prev, nuevoMensajeJose]);
+      const res = await api.consultarIaStreaming(consulta, sessionId, texto => {
+        setMensajes(prev => prev.map(m => m.id === idJose ? { ...m, texto: m.texto + texto } : m));
+      });
+      setMensajes(prev => prev.map(m => m.id === idJose ? {
+        ...m, texto: res.respuesta, fuentes: res.fuentes,
+        herramientasUtilizadas: res.herramientasUtilizadas, tiempoMs: res.tiempoRespuestaMs,
+        modelo: res.modelo, tokensEntrada: res.tokensEntrada, tokensSalida: res.tokensSalida,
+      } : m));
     } catch (err: any) {
-      setMensajes((prev) => [
-        ...prev,
-        {
-          id: 'err-' + Date.now(),
-          remitente: 'jose',
-          texto: err?.detail || err?.message || 'Lo siento, no pude conectar con el servicio de IA en este momento. Por favor intenta de nuevo.',
-        },
-      ]);
+      setMensajes(prev => prev.map(m => m.id === idJose ? { ...m, texto: err?.detail || err?.message || 'Lo siento, no pude conectar con el servicio de IA en este momento. Por favor intenta de nuevo.' } : m));
     } finally {
       setCargando(false);
     }
