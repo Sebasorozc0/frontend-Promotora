@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
 import { FuenteCitada } from '../types/api';
+import { costoEstimadoGemini } from '../utils/aiCost';
 import { 
   X, 
   Send, 
@@ -25,6 +26,9 @@ interface MensajeChat {
   texto: string;
   fuentes?: FuenteCitada[];
   herramientasUtilizadas?: string[];
+  modelo?: string | null;
+  tokensEntrada?: number | null;
+  tokensSalida?: number | null;
   tiempoMs?: number;
 }
 
@@ -71,6 +75,9 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
         texto: res.respuesta,
         fuentes: res.fuentes,
         herramientasUtilizadas: res.herramientasUtilizadas,
+        modelo: res.modelo,
+        tokensEntrada: res.tokensEntrada,
+        tokensSalida: res.tokensSalida,
         tiempoMs: res.tiempoRespuestaMs,
       };
       setMensajes((prev) => [...prev, nuevoMensajeJose]);
@@ -181,6 +188,18 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
                 {m.herramientasUtilizadas?.includes('consultar_calificacion_presentador') && (
                   <div style={{ marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                     Consultó la calificación pública del presentador.
+                  </div>
+                )}
+
+                {m.tokensEntrada != null && m.tokensSalida != null && (
+                  <div style={{ marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                    Tokens: {m.tokensEntrada.toLocaleString('es-GT')} de entrada · {m.tokensSalida.toLocaleString('es-GT')} de salida
+                    {m.modelo === 'gemini-3.1-flash-lite' && (
+                      <div>
+                        {m.modelo} · Costo estimado a tarifa de pago: US$ {costoEstimadoGemini(m.tokensEntrada, m.tokensSalida).toFixed(6)} (US$ 0.25 entrada y US$ 1.50 salida por millón).
+                        En el nivel gratuito puede ser US$ 0 dentro de la cuota disponible.
+                      </div>
+                    )}
                   </div>
                 )}
 
