@@ -223,6 +223,9 @@ export interface ConsultaIaResponse {
   respuesta: string;
   fuentes: FuenteCitada[];
   herramientasUtilizadas?: string[];
+  modelo?: string | null;
+  tokensEntrada?: number | null;
+  tokensSalida?: number | null;
   tokensUtilizados?: number;
   tiempoRespuestaMs?: number;
   sessionId?: string;
