@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
-import { ConsultaIaResponse, FuenteCitada } from '../types/api';
+import { FuenteCitada } from '../types/api';
 import { 
   X, 
   Send, 
@@ -24,6 +24,7 @@ interface MensajeChat {
   remitente: 'usuario' | 'jose';
   texto: string;
   fuentes?: FuenteCitada[];
+  herramientasUtilizadas?: string[];
   tiempoMs?: number;
 }
 
@@ -69,6 +70,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
         remitente: 'jose',
         texto: res.respuesta,
         fuentes: res.fuentes,
+        herramientasUtilizadas: res.herramientasUtilizadas,
         tiempoMs: res.tiempoRespuestaMs,
       };
       setMensajes((prev) => [...prev, nuevoMensajeJose]);
@@ -94,7 +96,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
     '¿Qué eventos están confirmados este mes?',
     '¿Cuáles son las políticas de reembolso y cancelación?',
     '¿Cómo funciona la validación del código QR en puerta?',
-    '¿Qué incluye el acceso Platinum VIP en Explanada Cayalá?',
+    '¿Cuál es la calificación del presentador con ID 1?',
   ];
 
   return (
@@ -176,6 +178,12 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
                   {m.texto}
                 </div>
 
+                {m.herramientasUtilizadas?.includes('consultar_calificacion_presentador') && (
+                  <div style={{ marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                    Consultó la calificación pública del presentador.
+                  </div>
+                )}
+
                 {/* Citaciones RAG */}
                 {m.fuentes && m.fuentes.length > 0 && (
                   <div style={{ marginTop: '6px' }}>
@@ -243,7 +251,7 @@ export const JoseAssistantDrawer: React.FC<JoseAssistantDrawerProps> = ({
               fontSize: '0.8rem'
             }}>
               <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-              Consultando documentos RAG indexados...
+              Consultando información pública...
             </div>
           )}
         </div>

@@ -222,6 +222,7 @@ export interface FuenteCitada {
 export interface ConsultaIaResponse {
   respuesta: string;
   fuentes: FuenteCitada[];
+  herramientasUtilizadas?: string[];
   tokensUtilizados?: number;
   tiempoRespuestaMs?: number;
   sessionId?: string;
