@@ -1,13 +1,8 @@
 import { useState } from 'react';
 import { api } from '../../api/client';
+import { rangoFechasUtc } from '../../utils/rangoFechas';
 
 const nombres = ['Ventas por evento','Ventas por categoría','Ventas por recinto','Ventas por fecha y método','Ocupación por localidad','Boletos por evento','Movimientos por dueño','Comisiones de plataforma','Clientes por compras','Compras no completadas','Calificación por presentador','Eventos por estado','Carreras por distancia','Uso del agente IA','Auditoría y notificaciones'];
-
-function diaSiguienteUtc(fecha: string): string {
-  const valor = new Date(`${fecha}T00:00:00Z`);
-  valor.setUTCDate(valor.getUTCDate() + 1);
-  return valor.toISOString().slice(0, 10);
-}
 
 export function AdminReports() {
   const [numero, setNumero] = useState(1);
@@ -18,9 +13,10 @@ export function AdminReports() {
   const [busy, setBusy] = useState(false);
   const codigo = 'R-' + String(numero).padStart(2, '0');
   const permitidos = ['desde', 'hasta', ...(numero < 14 ? ['eventoId','categoriaId','recintoId','duenoId'] : []), ...(numero < 15 ? ['estado'] : []), ...([1,2,3,4,6,7,8,9,10].includes(numero) ? ['moneda'] : []), ...(numero === 4 ? ['metodo'] : [])];
-  const rangoInvalido = Boolean((filtros.desde && filtros.desde > '9999-12-30') || (filtros.hasta && filtros.hasta > '9999-12-30') || (filtros.desde && filtros.hasta && filtros.desde > filtros.hasta));
+  const rango = rangoFechasUtc(filtros.desde || '', filtros.hasta || '');
+  const rangoInvalido = rango === null;
   const parametros = Object.fromEntries(Object.entries(filtros).filter(([key, value]) => permitidos.includes(key) && value.trim()));
-  if (parametros.hasta && !rangoInvalido) parametros.hasta = diaSiguienteUtc(parametros.hasta);
+  if (rango?.hasta) parametros.hasta = rango.hasta;
   const ejecutar = async (formato: 'json' | 'xlsx' | 'pdf', pagina = page) => {
     if (rangoInvalido) { setError('Revisa el rango de fechas. La fecha inicial no puede ser posterior a la final.'); return; }
     setBusy(true); setError('');
