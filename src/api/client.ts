@@ -452,6 +452,36 @@ class ApiClient {
     return this.request('/ia/consultas', { method: 'POST', body: JSON.stringify({ pregunta, sessionId: sessionId || null }) });
   }
 
+  public async consultarIaStreaming(pregunta: string, sessionId: string, onTexto: (texto: string) => void): Promise<ConsultaIaResponse> {
+    const response = await this.response('/ia/consultas/stream', { method: 'POST', body: JSON.stringify({ pregunta, sessionId }) });
+    if (!response.body) throw new Error('El navegador no admite respuestas en streaming.');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pendiente = '';
+    let resultado: ConsultaIaResponse | undefined;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        pendiente += decoder.decode(value, { stream: !done });
+        const eventos = pendiente.split(/\r?\n\r?\n/);
+        pendiente = eventos.pop() || '';
+        for (const evento of eventos) {
+          const lineas = evento.split(/\r?\n/);
+          const tipo = lineas.find(linea => linea.startsWith('event:'))?.slice(6).trim();
+          const datos = lineas.filter(linea => linea.startsWith('data:')).map(linea => linea.slice(5).trimStart()).join('\n');
+          if (!tipo || !datos) continue;
+          const contenido = JSON.parse(datos);
+          if (tipo === 'delta') onTexto(contenido.texto);
+          if (tipo === 'final') resultado = contenido as ConsultaIaResponse;
+          if (tipo === 'error') throw new Error(contenido.detail || 'No se pudo completar la respuesta.');
+        }
+        if (done) break;
+      }
+    } finally { reader.releaseLock(); }
+    if (!resultado) throw new Error('La respuesta se interrumpió antes de completarse.');
+    return resultado;
+  }
+
   // --- Usuarios y Perfiles (6 endpoints) ---
   public async getPerfil(id: number): Promise<UsuarioDetalleDto> {
     return this.request<UsuarioDetalleDto>(`/usuarios/${id}`);
